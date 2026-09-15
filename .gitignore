@@ -1,0 +1,13 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+*.log
+hs_err_pid*.log
+.env
+.env.local
+application-local.properties
+application-secret.properties
+.idea/
+*.iml
+.vscode/
+.DS_Store
