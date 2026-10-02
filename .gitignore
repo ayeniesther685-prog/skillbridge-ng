@@ -10,4 +10,13 @@ application-secret.properties
 .idea/
 *.iml
 .vscode/
-.DS_Store
+.DS_Storenode_modules/
+dist/
+target/
+.idea/
+*.iml
+.env.local
+
+node_modules/
+dist/
+target/

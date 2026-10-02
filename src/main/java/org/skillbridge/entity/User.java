@@ -56,6 +56,14 @@ public class User {
     )
     private Set<Role> roles = new HashSet<>();
 
+        @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "user_skills",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "skill_id")
+    )
+    private Set<Skill> skills = new HashSet<>();
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -106,4 +114,10 @@ public class User {
     public void setRoles(Set<Role> roles) { this.roles = roles; }
 
     public void addRole(Role role) { this.roles.add(role); }
+
+        public Set<Skill> getSkills() { return skills; }
+    public void setSkills(Set<Skill> skills) { this.skills = skills; }
+
+    public void addSkill(Skill skill) { this.skills.add(skill); }
+    public void removeSkill(Skill skill) { this.skills.remove(skill); }
 }
