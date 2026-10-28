@@ -11,7 +11,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -28,10 +27,22 @@ class Phase4Tests {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper om;
 
-    private String registerAndToken(String prefix) throws Exception {
+    private String registerClient(String prefix) throws Exception {
         String email = prefix + "-" + UUID.randomUUID() + "@example.com";
         RegisterRequest reg = new RegisterRequest(
-                "Test", "User", email, "Password123", null, Set.of(RoleName.FREELANCER));
+                "Test", "Client", email, "Password123", null, Set.of(RoleName.CLIENT));
+        String json = mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(reg)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return om.readTree(json).get("accessToken").asText();
+    }
+
+    private String registerFreelancer(String prefix) throws Exception {
+        String email = prefix + "-" + UUID.randomUUID() + "@example.com";
+        RegisterRequest reg = new RegisterRequest(
+                "Test", "Freelancer", email, "Password123", null, Set.of(RoleName.FREELANCER));
         String json = mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsString(reg)))
@@ -42,8 +53,8 @@ class Phase4Tests {
 
     @Test
     void fullJobApplicationFlow() throws Exception {
-        String clientToken = registerAndToken("client");
-        String freelancerToken = registerAndToken("freelancer");
+        String clientToken = registerClient("client");
+        String freelancerToken = registerFreelancer("freelancer");
 
         // 1. Client posts a job
         String jobJson = mockMvc.perform(post("/api/jobs")
@@ -110,7 +121,7 @@ class Phase4Tests {
 
     @Test
     void applyingToOwnJob_rejected() throws Exception {
-        String clientToken = registerAndToken("owner");
+        String clientToken = registerClient("owner");
 
         String jobJson = mockMvc.perform(post("/api/jobs")
                         .header("Authorization", "Bearer " + clientToken)
@@ -124,19 +135,21 @@ class Phase4Tests {
 
         Long jobId = om.readTree(jobJson).get("id").asLong();
 
+        // CLIENTs can't apply to any job. The service layer enforces this before
+        // the "own job" check, so we get 403 (forbidden) rather than 400.
         mockMvc.perform(post("/api/jobs/" + jobId + "/applications")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"proposal":{"coverLetter":"me","proposedPrice":100}}
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void duplicateApplication_rejected() throws Exception {
-        String clientToken = registerAndToken("client2");
-        String freelancerToken = registerAndToken("freelancer2");
+        String clientToken = registerClient("client2");
+        String freelancerToken = registerFreelancer("freelancer2");
 
         String jobJson = mockMvc.perform(post("/api/jobs")
                         .header("Authorization", "Bearer " + clientToken)

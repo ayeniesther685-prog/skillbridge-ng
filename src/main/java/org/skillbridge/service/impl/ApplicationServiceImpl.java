@@ -18,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.skillbridge.enums.RoleName;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -39,9 +40,16 @@ public class ApplicationServiceImpl {
         this.currentUser = currentUser;
     }
 
-    @Transactional
+       @Transactional
     public ApplicationResponse apply(Long jobId, ApplicationCreateRequest req) {
         User applicant = currentUser.require();
+
+        boolean isClient = applicant.getRoles().stream()
+                .anyMatch(r -> r.getName() == RoleName.CLIENT);
+        if (isClient) {
+            throw new AccessDeniedException("CLIENT accounts cannot apply to jobs");
+        }
+
         Job job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new ResourceNotFoundException("Job not found with id " + jobId));
 
@@ -70,7 +78,6 @@ public class ApplicationServiceImpl {
 
         return applicationMapper.toResponse(applicationRepository.save(app));
     }
-
     public ApplicationResponse findById(Long id) {
         Application app = loadAndAuthorizeRead(id);
         return applicationMapper.toResponse(app);
@@ -114,8 +121,7 @@ public class ApplicationServiceImpl {
         app.setStatus(newStatus);
         return applicationMapper.toResponse(applicationRepository.save(app));
     }
-
-    @Transactional
+     @Transactional
     public ApplicationResponse withdraw(Long id) {
         User caller = currentUser.require();
         Application app = applicationRepository.findById(id)
@@ -131,6 +137,8 @@ public class ApplicationServiceImpl {
                     "Cannot withdraw an application in status " + current);
         }
 
+
+   
         app.setStatus(ApplicationStatus.WITHDRAWN);
         return applicationMapper.toResponse(applicationRepository.save(app));
     }

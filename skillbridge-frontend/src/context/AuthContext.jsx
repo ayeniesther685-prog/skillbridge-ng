@@ -1,29 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { authService } from '../services/authService.js'
-import { tokenStorage } from '../services/api.js'
+import * as authApi from '../api/authApi.js'
+import { tokenStorage } from '../utils/token.js'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true) // initial auth check
+  const [loading, setLoading] = useState(true)
 
   const refreshUser = useCallback(async () => {
-    const me = await authService.me()
+    const me = await authApi.me()
     setUser(me)
     return me
   }, [])
 
-  // Restore session on first load
+  // Restore session. A 401 here is transparently refreshed by the axios interceptor.
   useEffect(() => {
     let active = true
     ;(async () => {
-      if (!tokenStorage.getAccess() && !tokenStorage.getRefresh()) {
-        setLoading(false)
-        return
-      }
+      if (!tokenStorage.getAccess() && !tokenStorage.getRefresh()) { setLoading(false); return }
       try {
-        const me = await authService.me()
+        const me = await authApi.me()
         if (active) setUser(me)
       } catch {
         tokenStorage.clear()
@@ -35,25 +32,28 @@ export function AuthProvider({ children }) {
     return () => { active = false }
   }, [])
 
-  // Refresh failed somewhere in the app -> drop to logged-out
   useEffect(() => {
     const onExpired = () => setUser(null)
     window.addEventListener('auth:session-expired', onExpired)
     return () => window.removeEventListener('auth:session-expired', onExpired)
   }, [])
 
-  const login = useCallback(async (credentials) => {
-    const { user: u } = await authService.login(credentials)
-    setUser(u ?? (await authService.me()))
+  const login = useCallback(async ({ email, password, remember = true }) => {
+    const data = await authApi.login({ email, password })
+    tokenStorage.set(data, remember)
+    setUser(data.user)
   }, [])
 
   const register = useCallback(async (payload) => {
-    const { user: u } = await authService.register(payload)
-    setUser(u ?? (await authService.me()))
+    const data = await authApi.register(payload)
+    tokenStorage.set(data, true)
+    setUser(data.user)
   }, [])
 
   const logout = useCallback(async () => {
-    try { await authService.logout() } catch { /* clear locally regardless */ }
+    const refreshToken = tokenStorage.getRefresh()
+    if (refreshToken) authApi.logout(refreshToken).catch(() => {}) // fire-and-forget
+    tokenStorage.clear()
     setUser(null)
   }, [])
 

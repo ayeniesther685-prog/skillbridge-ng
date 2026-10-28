@@ -16,6 +16,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -51,7 +52,8 @@ public class JobController {
         return ResponseEntity.ok(service.findById(id));
     }
 
-    @PostMapping
+      @PostMapping
+    @PreAuthorize("hasRole('CLIENT')")
     public ResponseEntity<JobResponse> create(@Valid @RequestBody JobCreateRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }

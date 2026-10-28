@@ -80,17 +80,18 @@ public class AuthServiceImpl implements AuthService {
             requestedRoles = Set.of(RoleName.STUDENT);
         }
 
-        for (RoleName roleName : requestedRoles) {
-
-            Role role = roleRepository.findByName(roleName)
-                    .orElseThrow(() ->
-                            new ResourceNotFoundException(
-                                    "Role not found: " + roleName
-                            )
-                    );
-
-            user.addRole(role);
-        }
+      for (RoleName roleName : requestedRoles) {
+    if (roleName == RoleName.ADMIN) {
+        throw new IllegalArgumentException("Cannot self-register as ADMIN");
+    }
+    Role role = roleRepository.findByName(roleName)
+            .orElseThrow(() ->
+                    new ResourceNotFoundException(
+                            "Role not found: " + roleName
+                    )
+            );
+    user.addRole(role);
+}
 
         User savedUser = userRepository.save(user);
 

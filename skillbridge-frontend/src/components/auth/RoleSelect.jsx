@@ -1,7 +1,7 @@
 const OPTIONS = [
-  { value: 'STUDENT', label: 'Student', hint: 'Learning and looking for first opportunities' },
-  { value: 'FREELANCER', label: 'Freelancer', hint: 'Offering skills and taking projects' },
-  { value: 'CLIENT', label: 'Client', hint: 'Hiring talent and posting work' },
+  { value: 'STUDENT', label: 'Student' },
+  { value: 'FREELANCER', label: 'Freelancer' },
+  { value: 'CLIENT', label: 'Client' },
 ]
 
 export default function RoleSelect({ value = [], onChange, error }) {
@@ -13,13 +13,7 @@ export default function RoleSelect({ value = [], onChange, error }) {
         {OPTIONS.map((o) => {
           const on = value.includes(o.value)
           return (
-            <label
-              key={o.value}
-              title={o.hint}
-              className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-3 text-sm font-semibold transition-colors focus-within:outline-2 focus-within:outline-brand-400 ${
-                on ? 'border-brand-400 bg-brand-500/15 text-white' : 'border-line bg-ink-800 text-slate-300 hover:border-slate-500'
-              }`}
-            >
+            <label key={o.value} className={`flex cursor-pointer items-center justify-center rounded-xl border px-3 py-3 text-sm font-semibold transition-colors focus-within:outline-2 focus-within:outline-brand-400 ${on ? 'border-brand-400 bg-brand-500/15 text-white' : 'border-line bg-ink-800 text-slate-300 hover:border-slate-500'}`}>
               <input type="checkbox" className="sr-only" checked={on} onChange={() => toggle(o.value)} />
               {o.label}
             </label>
