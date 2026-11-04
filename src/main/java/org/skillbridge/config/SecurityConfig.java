@@ -41,7 +41,7 @@ public class SecurityConfig {
         this.accessDeniedHandler = accessDeniedHandler;
     }
 
-    @Bean
+       @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -51,15 +51,17 @@ public class SecurityConfig {
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
-                        // Public
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
                                 "/api/auth/refresh"
                         ).permitAll()
+
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
+
+                        .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/skills", "/api/skills/**").permitAll()
+
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
@@ -67,17 +69,27 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/info"
                         ).permitAll()
+
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/profile").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/skills").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/education").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/experience").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/certifications").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/portfolio").permitAll()                   
-                        .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/*").permitAll()
-                         // Admin
+                        .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/portfolio").permitAll()
+
+                        // PUBLIC ACADEMY CATALOG — must come BEFORE anyRequest()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/academy/programs",
+                                "/api/academy/departments",
+                                "/api/academy/courses",
+                                "/api/academy/sessions",
+                                "/api/academy/sessions/*/semesters"
+                        ).permitAll()
+
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/me/**").authenticated()
-                        // Everything else requires authentication
+
+                        // LAST — must be the final rule
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
