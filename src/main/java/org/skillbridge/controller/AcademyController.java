@@ -20,6 +20,11 @@ import org.skillbridge.service.impl.AcademicServiceImpl;
 import org.skillbridge.service.impl.LessonServiceImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.skillbridge.dto.request.SubmissionCreateRequest;
+import org.skillbridge.dto.response.AssignmentResponse;
+import org.skillbridge.dto.response.AssignmentSummaryResponse;
+import org.skillbridge.dto.response.SubmissionResponse;
+import org.skillbridge.service.impl.AssignmentServiceImpl;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,13 +36,15 @@ public class AcademyController {
 
     private final AcademicServiceImpl academicService;
     private final LessonServiceImpl lessonService;
+    private final AssignmentServiceImpl assignmentService;
 
     public AcademyController(AcademicServiceImpl academicService,
-                             LessonServiceImpl lessonService) {
+                             LessonServiceImpl lessonService,
+                             AssignmentServiceImpl assignmentService) {
         this.academicService = academicService;
         this.lessonService = lessonService;
+        this.assignmentService = assignmentService;
     }
-
     // ===== Public reads =====
     @GetMapping("/programs")
     public ResponseEntity<List<AcademicProgramResponse>> programs() {
@@ -104,7 +111,31 @@ public class AcademyController {
             @Valid @RequestBody ProgressUpdateRequest req) {
         return ResponseEntity.ok(lessonService.updateMyProgress(lessonId, req.status()));
     }
+     
+        // ===== Assignments =====
+    @GetMapping("/courses/{courseId}/assignments")
+    public ResponseEntity<List<AssignmentSummaryResponse>> listAssignments(@PathVariable Long courseId) {
+        return ResponseEntity.ok(assignmentService.listPublishedForCourse(courseId));
+    }
 
+    @GetMapping("/assignments/{assignmentId}")
+    public ResponseEntity<AssignmentResponse> getAssignment(@PathVariable Long assignmentId) {
+        return ResponseEntity.ok(assignmentService.getAssignment(assignmentId));
+    }
+
+    @PostMapping("/assignments/{assignmentId}/submit")
+    public ResponseEntity<SubmissionResponse> submitAssignment(
+            @PathVariable Long assignmentId,
+            @Valid @RequestBody SubmissionCreateRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(assignmentService.submitAssignment(assignmentId, req));
+    }
+
+    @GetMapping("/assignments/{assignmentId}/my-submission")
+    public ResponseEntity<SubmissionResponse> mySubmission(@PathVariable Long assignmentId) {
+        return ResponseEntity.ok(assignmentService.getMySubmission(assignmentId));
+    }
+    
     @GetMapping("/me/courses/{courseId}/progress")
     public ResponseEntity<CourseProgressResponse> myProgress(@PathVariable Long courseId) {
         return ResponseEntity.ok(lessonService.getMyCourseProgress(courseId));
