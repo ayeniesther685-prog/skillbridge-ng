@@ -21,6 +21,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.util.List;
 
@@ -78,14 +79,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/portfolio").permitAll()
 
                         // PUBLIC ACADEMY CATALOG — must come BEFORE anyRequest()
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/academy/programs",
-                                "/api/academy/departments",
-                                "/api/academy/courses",
-                                "/api/academy/sessions",
-                                "/api/academy/sessions/*/semesters"
+                         .requestMatchers(
+                                new AntPathRequestMatcher("/api/academy/programs", "GET"),
+                                new AntPathRequestMatcher("/api/academy/departments", "GET"),
+                                new AntPathRequestMatcher("/api/academy/courses", "GET"),
+                                new AntPathRequestMatcher("/api/academy/sessions", "GET"),
+                                new AntPathRequestMatcher("/api/academy/sessions/*/semesters", "GET"),
+                                new AntPathRequestMatcher("/api/academy/courses/*/lessons", "GET"),
+                                new AntPathRequestMatcher("/api/academy/courses/*/lessons/*", "GET")
                         ).permitAll()
-
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/me/**").authenticated()
 
