@@ -11,6 +11,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.skillbridge.exception.QuotaExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -79,4 +80,23 @@ public ResponseEntity<ApiError> handleNotAuthenticated(NotAuthenticatedException
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
             HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), req.getRequestURI()));
 }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ApiError> handleQuota(QuotaExceededException ex, HttpServletRequest req) {
+        java.util.Map<String, String> details = new java.util.HashMap<>();
+        if (ex.getResetAtDescription() != null) {
+            details.put("resetAtDescription", ex.getResetAtDescription());
+        }
+        if (ex.getResetAt() != null) {
+            details.put("resetAt", ex.getResetAt().toString());
+        }
+        ApiError body = new ApiError(
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                "Too Many Requests",
+                ex.getMessage(),
+                req.getRequestURI(),
+                details.isEmpty() ? null : details
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
 }
