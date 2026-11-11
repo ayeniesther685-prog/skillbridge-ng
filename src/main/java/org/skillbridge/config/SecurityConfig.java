@@ -88,7 +88,8 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/api/academy/courses/*/lessons", "GET"),
                                 new AntPathRequestMatcher("/api/academy/courses/*/lessons/*", "GET"),
                                 new AntPathRequestMatcher("/api/academy/courses/*/assignments", "GET"),
-                                new AntPathRequestMatcher("/api/academy/assignments/*", "GET")
+                                new AntPathRequestMatcher("/api/academy/assignments/*", "GET"),
+                                new AntPathRequestMatcher("/api/certificates/verify/*", "GET")
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/me/**").authenticated()

@@ -11,4 +11,5 @@ public interface AssignmentSubmissionRepository extends JpaRepository<Assignment
     Optional<AssignmentSubmission> findByAssignmentIdAndStudentRecordId(Long assignmentId, Long studentRecordId);
     List<AssignmentSubmission> findByAssignmentIdOrderBySubmittedAtDesc(Long assignmentId);
     long countByAssignmentIdAndStatus(Long assignmentId, SubmissionStatus status);
+    List<AssignmentSubmission> findByStudentRecordIdAndStatus(Long studentRecordId, org.skillbridge.enums.SubmissionStatus status);
 }
