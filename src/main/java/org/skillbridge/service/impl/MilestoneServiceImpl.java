@@ -30,17 +30,20 @@ public class MilestoneServiceImpl {
     private final MilestoneMapper milestoneMapper;
     private final CurrentUser currentUser;
     private final NotificationServiceImpl notificationService;
+    private final CommissionServiceImpl commissionService;
 
     public MilestoneServiceImpl(MilestoneRepository milestoneRepository,
                                 ContractRepository contractRepository,
                                 MilestoneMapper milestoneMapper,
                                 CurrentUser currentUser,
-                                NotificationServiceImpl notificationService) {
+                                NotificationServiceImpl notificationService,
+                                CommissionServiceImpl commissionService) {
         this.milestoneRepository = milestoneRepository;
         this.contractRepository = contractRepository;
         this.milestoneMapper = milestoneMapper;
         this.currentUser = currentUser;
         this.notificationService = notificationService;
+        this.commissionService = commissionService;
     }
 
     public List<MilestoneResponse> listForContract(Long contractId) {
@@ -139,6 +142,7 @@ public class MilestoneServiceImpl {
         if (allApproved && c.getStatus() != ContractStatus.COMPLETED) {
             c.setStatus(ContractStatus.COMPLETED);
             contractRepository.save(c);
+            commissionService.recordCommissionForContract(c);
         }
 
         return milestoneMapper.toResponse(saved);
