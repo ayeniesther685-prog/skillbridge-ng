@@ -156,4 +156,25 @@ class AcademyTests {
                         .content("{\"name\":\"Test\",\"code\":\"TST\"}"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+void cannotEnrollInSWE201WithoutCompletingSWE101() throws Exception {
+    String token = register("prereqtest", RoleName.STUDENT);
+
+    // First, enroll in SWE101 (required by SWE201)
+    mockMvc.perform(post("/api/academy/enroll")
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"programId\":1,\"departmentId\":1}"))
+            .andExpect(status().isCreated());
+
+    // Try to enroll in SWE201 (id=2) — should fail because SWE101 isn't complete
+    mockMvc.perform(post("/api/academy/me/enrollments")
+                    .header("Authorization", "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"courseId\":2,\"semesterId\":1}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.message", containsString("SWE101")));
+}
+
 }

@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root, [data-theme='dark'] {
+  --bg: 7 11 20; --surface: 15 23 42; --card: 17 24 39; --line: 255 255 255;
+  --primary: 79 70 229; --accent: 6 182 212; --warning: 245 158 11;
+  --success: 16 185 129; --danger: 239 68 68; --fg: 248 250 252; --muted: 148 163 184;
+  --line-alpha: 0.08; color-scheme: dark;
+}
+[data-theme='light'] {
+  --bg: 248 250 252; --surface: 255 255 255; --card: 255 255 255; --line: 0 0 0;
+  --primary: 79 70 229; --accent: 8 145 178; --warning: 217 119 6;
+  --success: 5 150 105; --danger: 220 38 38; --fg: 15 23 42; --muted: 100 116 139;
+  --line-alpha: 0.1; color-scheme: light;
+}
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-fg font-sans antialiased; }
+* { border-color: rgb(var(--line) / var(--line-alpha)); }
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+@layer components {
+  .field { @apply w-full rounded border bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-primary focus:outline-none; }
+  .skeleton { @apply animate-pulse rounded bg-fg/10; }
+}
+@layer utilities {
+  /* Gradient text utility for hero headings */
+  .text-gradient {
+    background: linear-gradient(135deg, rgb(var(--fg)) 0%, rgb(var(--muted)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Soft glow blob for backgrounds */
+  .blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(80px);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}
+
+@layer components {
+  /* Existing .field and .skeleton stay unchanged */
+
+  /* Stat card styling for dashboards */
+  .stat-card {
+    @apply rounded-xl border bg-card p-5 transition-all hover:border-primary/20;
+  }
+  .stat-label {
+    @apply text-xs font-medium uppercase tracking-wider text-muted;
+  }
+  .stat-value {
+    @apply mt-1 text-2xl font-semibold text-fg;
+  }
+  .stat-delta {
+    @apply mt-1 text-xs font-medium;
+  }
+}

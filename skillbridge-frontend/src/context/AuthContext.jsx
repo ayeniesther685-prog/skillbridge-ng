@@ -1,71 +1,53 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import * as authApi from '../api/authApi.js'
-import { tokenStorage } from '../utils/token.js'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { authApi } from '../api/auth'
+import { tokens } from '../api/client'
 
-const AuthContext = createContext(null)
+const Ctx = createContext(null)
+export const useAuth = () => useContext(Ctx)
+
+export const dashboardFor = (role) => `/dashboard/${role.toLowerCase()}`
+const ORDER = ['ADMIN', 'CLIENT', 'FREELANCER', 'STUDENT']
+export const primaryRole = (roles = []) => ORDER.find((r) => roles.includes(r)) || 'STUDENT'
 
 export function AuthProvider({ children }) {
+  const qc = useQueryClient()
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [restoring, setRestoring] = useState(true)
 
-  const refreshUser = useCallback(async () => {
-    const me = await authApi.me()
-    setUser(me)
-    return me
-  }, [])
-
-  // Restore session. A 401 here is transparently refreshed by the axios interceptor.
   useEffect(() => {
-    let active = true
+    let alive = true
     ;(async () => {
-      if (!tokenStorage.getAccess() && !tokenStorage.getRefresh()) { setLoading(false); return }
+      if (!tokens.access && !tokens.refresh) { setRestoring(false); return }
       try {
-        const me = await authApi.me()
-        if (active) setUser(me)
+        const me = await authApi.me() // interceptor refreshes once on 401
+        if (alive) setUser(me)
       } catch {
-        tokenStorage.clear()
-        if (active) setUser(null)
+        tokens.clear()
       } finally {
-        if (active) setLoading(false)
+        if (alive) setRestoring(false)
       }
     })()
-    return () => { active = false }
+    return () => { alive = false }
   }, [])
 
-  useEffect(() => {
-    const onExpired = () => setUser(null)
-    window.addEventListener('auth:session-expired', onExpired)
-    return () => window.removeEventListener('auth:session-expired', onExpired)
+  const acceptSession = useCallback((res) => {
+    tokens.set(res.accessToken, res.refreshToken)
+    setUser(res.user)
+    return res.user
   }, [])
 
-  const login = useCallback(async ({ email, password, remember = true }) => {
-    const data = await authApi.login({ email, password })
-    tokenStorage.set(data, remember)
-    setUser(data.user)
-  }, [])
-
-  const register = useCallback(async (payload) => {
-    const data = await authApi.register(payload)
-    tokenStorage.set(data, true)
-    setUser(data.user)
-  }, [])
-
-  const logout = useCallback(async () => {
-    const refreshToken = tokenStorage.getRefresh()
-    if (refreshToken) authApi.logout(refreshToken).catch(() => {}) // fire-and-forget
-    tokenStorage.clear()
+  const login = useCallback(async (body) => acceptSession(await authApi.login(body)), [acceptSession])
+  const register = useCallback(async (body) => acceptSession(await authApi.register(body)), [acceptSession])
+  const logout = useCallback(() => {
+    authApi.logout()
+    tokens.clear()
     setUser(null)
-  }, [])
+    qc.clear()
+    window.location.assign('/login')
+  }, [qc])
 
-  const value = useMemo(
-    () => ({ user, isAuthenticated: !!user, loading, login, register, logout, refreshUser }),
-    [user, loading, login, register, logout, refreshUser]
-  )
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
+  const hasRole = useCallback((...roles) => !!user?.roles?.some((r) => roles.includes(r)), [user])
 
-export const useAuth = () => {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
-  return ctx
+  return <Ctx.Provider value={{ user, restoring, login, register, logout, hasRole, isAuthed: !!user }}>{children}</Ctx.Provider>
 }

@@ -2,6 +2,7 @@ package org.skillbridge.repository;
 
 import org.skillbridge.entity.CourseEnrollment;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
 
 import java.util.List;
 
@@ -9,4 +10,6 @@ public interface CourseEnrollmentRepository extends JpaRepository<CourseEnrollme
     List<CourseEnrollment> findByStudentRecordIdOrderByEnrolledAtDesc(Long studentRecordId);
     boolean existsByStudentRecordIdAndCourseIdAndSemesterId(
             Long studentRecordId, Long courseId, Long semesterId);
+
+ Optional<CourseEnrollment> findByStudentRecordIdAndCourseId(Long studentRecordId, Long courseId);
 }

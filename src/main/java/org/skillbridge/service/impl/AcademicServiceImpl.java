@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.Year;
 import java.util.List;
-
+import java.util.Optional;
 @Service
 @Transactional(readOnly = true)
 public class AcademicServiceImpl {
@@ -140,7 +140,7 @@ public class AcademicServiceImpl {
                 .stream().map(mapper::toEnrollmentResponse).toList();
     }
 
-    @Transactional
+       @Transactional
     public EnrollmentResponse enrollInCourse(EnrollCourseRequest req) {
         User me = currentUser.require();
         StudentRecord rec = studentRecordRepository.findByUserId(me.getId())
@@ -149,6 +149,22 @@ public class AcademicServiceImpl {
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
         AcademicSemester semester = semesterRepository.findById(req.semesterId())
                 .orElseThrow(() -> new ResourceNotFoundException("Semester not found"));
+
+        // ===== PREREQUISITE CHECK (new) =====
+        Course prereq = course.getPrerequisiteCourse();
+        if (prereq != null) {
+            Optional<CourseEnrollment> prereqEnrollment =
+                    enrollmentRepository.findByStudentRecordIdAndCourseId(
+                            rec.getId(), prereq.getId());
+            if (prereqEnrollment.isEmpty()
+                    || prereqEnrollment.get().getStatus() != EnrollmentStatus.COMPLETED) {
+                throw new IllegalStateException(
+                        "You must complete " + prereq.getCode()
+                                + " (" + prereq.getTitle() + ") before enrolling in "
+                                + course.getCode());
+            }
+        }
+        // ===== END PREREQUISITE CHECK =====
 
         if (enrollmentRepository.existsByStudentRecordIdAndCourseIdAndSemesterId(
                 rec.getId(), course.getId(), semester.getId())) {

@@ -29,13 +29,17 @@ public class AcademicMapper {
                 s.getId(), s.getSession().getId(), s.getSession().getName(),
                 s.getName(), s.getStartDate(), s.getEndDate());
     }
-
-    public CourseResponse toCourseResponse(Course c) {
-        return new CourseResponse(
-                c.getId(), c.getDepartment().getId(), c.getDepartment().getName(),
-                c.getCode(), c.getTitle(), c.getDescription(),
-                c.getLevel(), c.getCredits(), c.getDurationHours(), c.isActive());
-    }
+public CourseResponse toCourseResponse(Course c) {
+    Course prereq = c.getPrerequisiteCourse();
+    return new CourseResponse(
+            c.getId(), c.getDepartment().getId(), c.getDepartment().getName(),
+            c.getCode(), c.getTitle(), c.getDescription(),
+            c.getLevel(), c.getCredits(), c.getDurationHours(), c.isActive(),
+            prereq == null ? null : prereq.getId(),
+            prereq == null ? null : prereq.getCode(),
+            prereq == null ? null : prereq.getTitle()
+    );
+}
 
     public StudentRecordResponse toStudentRecordResponse(StudentRecord r) {
         return new StudentRecordResponse(

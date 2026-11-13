@@ -17,6 +17,10 @@ public class Course {
     @JoinColumn(name = "department_id", nullable = false)
     private AcademicDepartment department;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+   @JoinColumn(name = "prerequisite_course_id")
+    private Course prerequisiteCourse;
+
     @Column(name = "code", nullable = false, unique = true, length = 30)
     private String code;
 
@@ -59,6 +63,8 @@ public class Course {
     public void setId(Long id) { this.id = id; }
     public AcademicDepartment getDepartment() { return department; }
     public void setDepartment(AcademicDepartment department) { this.department = department; }
+    public Course getPrerequisiteCourse() { return prerequisiteCourse; }
+    public void setPrerequisiteCourse(Course prerequisiteCourse) { this.prerequisiteCourse = prerequisiteCourse; }
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
     public String getTitle() { return title; }
