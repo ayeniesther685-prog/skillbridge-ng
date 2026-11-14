@@ -11,6 +11,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -19,6 +21,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     public JwtAuthenticationFilter(
             JwtService jwtService,
@@ -72,20 +75,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext()
                     .setAuthentication(authentication);
 
-        } catch (Exception e) {
-
-            System.err.println("========== JWT FILTER ERROR ==========");
-            System.err.println("Request: "
-                    + request.getMethod()
-                    + " "
-                    + request.getRequestURI());
-            System.err.println("JWT authentication failed:");
-            e.printStackTrace();
-            System.err.println("======================================");
-
+       } catch (Exception e) {
+            // Do not leak stack traces into logs on every expired token.
+            // Token failures are expected and must not become log noise.
+            log.debug("JWT authentication failed for {} {}: {}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    e.getMessage());
             SecurityContextHolder.clearContext();
         }
-
         chain.doFilter(request, response);
     }
 }
