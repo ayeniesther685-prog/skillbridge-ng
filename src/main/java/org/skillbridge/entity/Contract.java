@@ -48,6 +48,10 @@ public class Contract {
     @Column(name = "status", nullable = false, length = 30)
     private ContractStatus status = ContractStatus.DRAFT;
 
+    // Phase 3D: set when any OPEN dispute exists on this contract. Cleared when no blocking dispute remains.
+    @Column(name = "disputed_at")
+    private Instant disputedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -99,6 +103,9 @@ public class Contract {
 
     public ContractStatus getStatus() { return status; }
     public void setStatus(ContractStatus status) { this.status = status; }
+
+    public Instant getDisputedAt() { return disputedAt; }
+    public void setDisputedAt(Instant disputedAt) { this.disputedAt = disputedAt; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

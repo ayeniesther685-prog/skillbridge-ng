@@ -7,12 +7,14 @@ import org.skillbridge.entity.Job;
 import org.skillbridge.entity.Skill;
 import org.skillbridge.entity.User;
 import org.skillbridge.enums.JobStatus;
+import org.skillbridge.exception.ProviderNotVerifiedException;
 import org.skillbridge.exception.ResourceNotFoundException;
 import org.skillbridge.mapper.JobMapper;
 import org.skillbridge.repository.JobRepository;
 import org.skillbridge.repository.SkillRepository;
 import org.skillbridge.repository.specification.JobSpecification;
 import org.skillbridge.security.CurrentUser;
+import org.skillbridge.service.ProviderVerificationService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
@@ -32,15 +34,18 @@ public class JobServiceImpl {
     private final SkillRepository skillRepository;
     private final JobMapper jobMapper;
     private final CurrentUser currentUser;
+    private final ProviderVerificationService providerVerificationService;
 
     public JobServiceImpl(JobRepository jobRepository,
                           SkillRepository skillRepository,
                           JobMapper jobMapper,
-                          CurrentUser currentUser) {
+                          CurrentUser currentUser,
+                          ProviderVerificationService providerVerificationService) {
         this.jobRepository = jobRepository;
         this.skillRepository = skillRepository;
         this.jobMapper = jobMapper;
         this.currentUser = currentUser;
+        this.providerVerificationService = providerVerificationService;
     }
 
     public Page<JobResponse> search(String search,
@@ -69,6 +74,14 @@ public class JobServiceImpl {
     public JobResponse create(JobCreateRequest req) {
         validateBudget(req.budgetMin(), req.budgetMax());
         User client = currentUser.require();
+
+        // Phase 1 Part B — new job posts require verified provider status.
+        // Existing jobs are untouched; only creation is gated.
+        if (!providerVerificationService.isVerified(client.getId())) {
+            throw new ProviderNotVerifiedException(
+                    "Provider verification required before posting a job. " +
+                    "Submit your verification at POST /api/providers/me/verification/submit");
+        }
 
         Job job = new Job();
         job.setClient(client);

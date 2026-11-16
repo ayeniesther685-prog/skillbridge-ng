@@ -37,4 +37,4 @@ batch-*.txt
 project-tree.txt
 *-dump.txt
 skillbridge-full-dump.txt
-phase1-inputs.txt
+phase1-inputs.txt*.bak*

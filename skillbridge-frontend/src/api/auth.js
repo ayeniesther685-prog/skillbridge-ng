@@ -8,4 +8,10 @@ export const authApi = {
     const refreshToken = tokens.refresh
     if (refreshToken) api.post('/api/auth/logout', { refreshToken }).catch(() => {})
   },
+
+  // Phase 3A: email verification
+  verifyEmail: (token) =>
+    bare.get('/api/auth/verify-email', { params: { token } }).then((r) => r.data),
+  resendVerification: (email) =>
+    bare.post('/api/auth/resend-verification', { email }).then((r) => r.data),
 }

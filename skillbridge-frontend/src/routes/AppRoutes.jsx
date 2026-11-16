@@ -15,6 +15,7 @@ import Freelancers from '../pages/public/Freelancers'
 import FreelancerProfile from '../pages/public/FreelancerProfile'
 import CertificateVerify from '../pages/public/CertificateVerify'
 import StaticPage from '../pages/public/StaticPage'
+import VerifyEmail from '../pages/public/VerifyEmail'
 import Dashboard from '../pages/dashboard/Dashboard'
 import NotFound from '../pages/common/NotFound'
 import AccessDenied from '../pages/common/AccessDenied'
@@ -31,6 +32,10 @@ import MyApplications from '../pages/jobs/MyApplications'
 import ApplyJob from '../pages/jobs/ApplyJob'
 import Contracts from '../pages/contracts/Contracts'
 import ContractDetail from '../pages/contracts/ContractDetail'
+import ContractRevisions from '../pages/contracts/ContractRevisions'
+import ContractDisputes from '../pages/contracts/ContractDisputes'
+import DisputeDetail from '../pages/contracts/DisputeDetail'
+import RevisionResponse from '../pages/contracts/RevisionResponse'
 import AcademyEnroll from '../pages/academy/AcademyEnroll'
 import AcademyCourses from '../pages/academy/AcademyCourses'
 import CourseDetail from '../pages/academy/CourseDetail'
@@ -60,12 +65,17 @@ import CreateAssignment from '../pages/admin/CreateAssignment'
 import Submissions from '../pages/admin/Submissions'
 import GradeSubmission from '../pages/admin/GradeSubmission'
 import AiQuota from '../pages/admin/AiQuota'
+import ProviderVerification from '../pages/profile/ProviderVerification'
+import ProviderVerifications from '../pages/admin/ProviderVerifications'
+import ProviderVerificationDetail from '../pages/admin/ProviderVerificationDetail'
+import DisputesAdmin from '../pages/admin/DisputesAdmin'
 
 function DashboardRedirect() {
   const { user, restoring } = useAuth()
   if (restoring) return <Spinner full />
   return <Navigate to={dashboardFor(primaryRole(user.roles))} replace />
 }
+
 const MEMBER = ['STUDENT', 'FREELANCER', 'CLIENT']
 const WORKER = ['STUDENT', 'FREELANCER']
 
@@ -89,6 +99,7 @@ export default function AppRoutes() {
       </Route>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardRedirect />} />
@@ -102,6 +113,7 @@ export default function AppRoutes() {
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/challenges/me/submissions" element={<MyChallengeSubmissions />} />
 
+          {/* ===== MEMBER (STUDENT / FREELANCER / CLIENT) ===== */}
           <Route element={<RoleGate roles={MEMBER} />}>
             <Route path="/profile" element={<ProfileLayout />}>
               <Route index element={<ProfileView />} />
@@ -109,14 +121,26 @@ export default function AppRoutes() {
               <Route path="skills" element={<ProfileSkills />} />
               {['education', 'experience', 'certifications', 'portfolio'].map((k) => <Route key={k} path={k} element={<ProfileCrud kind={k} />} />)}
             </Route>
+
+            {/* Provider verification form — CLIENT (and other MEMBER roles if they later act as providers) */}
+            <Route path="/profile/provider-verification" element={<ProviderVerification />} />
+
             <Route path="/contracts" element={<Contracts />} />
             <Route path="/contracts/:id" element={<ContractDetail />} />
+            <Route path="/contracts/:id/revisions" element={<ContractRevisions />} />
+            <Route path="/contracts/:id/revisions/:revisionId" element={<RevisionResponse />} />
+            <Route path="/contracts/:id/disputes" element={<ContractDisputes />} />
+            <Route path="/contracts/:id/disputes/:disputeId" element={<DisputeDetail />} />
           </Route>
+
+          {/* ===== CLIENT only ===== */}
           <Route element={<RoleGate roles={['CLIENT']} />}>
             <Route path="/jobs/new" element={<PostJob />} />
             <Route path="/jobs/:id/edit" element={<EditJob />} />
             <Route path="/jobs/:id/applications" element={<JobApplicants />} />
           </Route>
+
+          {/* ===== WORKER (STUDENT / FREELANCER) ===== */}
           <Route element={<RoleGate roles={WORKER} />}>
             <Route path="/applications" element={<MyApplications />} />
             <Route path="/jobs/:id/apply" element={<ApplyJob />} />
@@ -132,6 +156,8 @@ export default function AppRoutes() {
               <Route path="quota" element={<Quota />} />
             </Route>
           </Route>
+
+          {/* ===== STUDENT only ===== */}
           <Route element={<RoleGate roles={['STUDENT']} />}>
             <Route path="/academy/enroll" element={<AcademyEnroll />} />
             <Route path="/academy/courses" element={<AcademyCourses />} />
@@ -142,6 +168,8 @@ export default function AppRoutes() {
             <Route path="/academy/assignments/:id/my-submission" element={<MySubmission />} />
             <Route path="/academy/certificates" element={<MyCertificates />} />
           </Route>
+
+          {/* ===== ADMIN only ===== */}
           <Route element={<RoleGate roles={['ADMIN']} />}>
             <Route path="/admin/courses" element={<AdminCourses />} />
             <Route path="/admin/courses/new" element={<CreateCourse />} />
@@ -150,6 +178,9 @@ export default function AppRoutes() {
             <Route path="/admin/assignments/:id/submissions" element={<Submissions />} />
             <Route path="/admin/submissions/:id/grade" element={<GradeSubmission />} />
             <Route path="/admin/ai-quota" element={<AiQuota />} />
+            <Route path="/admin/provider-verifications" element={<ProviderVerifications />} />
+            <Route path="/admin/provider-verifications/:id" element={<ProviderVerificationDetail />} />
+            <Route path="/admin/disputes" element={<DisputesAdmin />} />
           </Route>
         </Route>
       </Route>

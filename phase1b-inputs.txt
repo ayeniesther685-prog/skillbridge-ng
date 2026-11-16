@@ -1,0 +1,464 @@
+===== FILE: src/main/java/org/skillbridge/service/impl/JobServiceImpl.java =====
+package org.skillbridge.service.impl;
+
+import org.skillbridge.dto.request.JobCreateRequest;
+import org.skillbridge.dto.request.JobUpdateRequest;
+import org.skillbridge.dto.response.JobResponse;
+import org.skillbridge.entity.Job;
+import org.skillbridge.entity.Skill;
+import org.skillbridge.entity.User;
+import org.skillbridge.enums.JobStatus;
+import org.skillbridge.exception.ResourceNotFoundException;
+import org.skillbridge.mapper.JobMapper;
+import org.skillbridge.repository.JobRepository;
+import org.skillbridge.repository.SkillRepository;
+import org.skillbridge.repository.specification.JobSpecification;
+import org.skillbridge.security.CurrentUser;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Service
+@Transactional(readOnly = true)
+public class JobServiceImpl {
+
+    private final JobRepository jobRepository;
+    private final SkillRepository skillRepository;
+    private final JobMapper jobMapper;
+    private final CurrentUser currentUser;
+
+    public JobServiceImpl(JobRepository jobRepository,
+                          SkillRepository skillRepository,
+                          JobMapper jobMapper,
+                          CurrentUser currentUser) {
+        this.jobRepository = jobRepository;
+        this.skillRepository = skillRepository;
+        this.jobMapper = jobMapper;
+        this.currentUser = currentUser;
+    }
+
+    public Page<JobResponse> search(String search,
+                                    String location,
+                                    org.skillbridge.enums.JobType jobType,
+                                    org.skillbridge.enums.ExperienceLevel experienceLevel,
+                                    JobStatus status,
+                                    BigDecimal minBudget,
+                                    BigDecimal maxBudget,
+                                    List<Long> skillIds,
+                                    Pageable pageable) {
+        return jobRepository.findAll(
+                JobSpecification.build(search, location, jobType, experienceLevel,
+                        status, minBudget, maxBudget, skillIds),
+                pageable
+        ).map(jobMapper::toResponse);
+    }
+
+    public JobResponse findById(Long id) {
+        Job job = jobRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found with id " + id));
+        return jobMapper.toResponse(job);
+    }
+
+    @Transactional
+    public JobResponse create(JobCreateRequest req) {
+        validateBudget(req.budgetMin(), req.budgetMax());
+        User client = currentUser.require();
+
+        Job job = new Job();
+        job.setClient(client);
+        job.setTitle(req.title());
+        job.setDescription(req.description());
+        job.setBudgetMin(req.budgetMin());
+        job.setBudgetMax(req.budgetMax());
+        job.setLocation(req.location());
+        job.setJobType(req.jobType());
+        job.setExperienceLevel(req.experienceLevel());
+        job.setDeadline(req.deadline());
+        job.setStatus(JobStatus.OPEN);
+        job.setRequiredSkills(loadSkills(req.skillIds()));
+
+        return jobMapper.toResponse(jobRepository.save(job));
+    }
+
+    @Transactional
+    public JobResponse update(Long id, JobUpdateRequest req) {
+        validateBudget(req.budgetMin(), req.budgetMax());
+        User caller = currentUser.require();
+        Job job = jobRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found with id " + id));
+
+        if (!job.getClient().getId().equals(caller.getId())) {
+            throw new AccessDeniedException("Only the job owner can update this job");
+        }
+
+        job.setTitle(req.title());
+        job.setDescription(req.description());
+        job.setBudgetMin(req.budgetMin());
+        job.setBudgetMax(req.budgetMax());
+        job.setLocation(req.location());
+        job.setJobType(req.jobType());
+        job.setExperienceLevel(req.experienceLevel());
+        job.setDeadline(req.deadline());
+        job.setRequiredSkills(loadSkills(req.skillIds()));
+
+        return jobMapper.toResponse(jobRepository.save(job));
+    }
+
+    @Transactional
+    public JobResponse changeStatus(Long id, JobStatus newStatus) {
+        User caller = currentUser.require();
+        Job job = jobRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found with id " + id));
+
+        if (!job.getClient().getId().equals(caller.getId())) {
+            throw new AccessDeniedException("Only the job owner can change the status");
+        }
+
+        job.setStatus(newStatus);
+        return jobMapper.toResponse(jobRepository.save(job));
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        User caller = currentUser.require();
+        Job job = jobRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found with id " + id));
+
+        if (!job.getClient().getId().equals(caller.getId())) {
+            throw new AccessDeniedException("Only the job owner can delete this job");
+        }
+
+        jobRepository.delete(job);
+    }
+
+    private Set<Skill> loadSkills(Set<Long> skillIds) {
+        if (skillIds == null || skillIds.isEmpty()) {
+            return new HashSet<>();
+        }
+        List<Skill> skills = skillRepository.findAllById(skillIds);
+        if (skills.size() != skillIds.size()) {
+            throw new ResourceNotFoundException("One or more skills not found");
+        }
+        return new HashSet<>(skills);
+    }
+
+    private static void validateBudget(BigDecimal min, BigDecimal max) {
+        if (min != null && max != null && min.compareTo(max) > 0) {
+            throw new IllegalArgumentException("budgetMin must be <= budgetMax");
+        }
+    }
+}
+
+===== FILE: src/main/java/org/skillbridge/controller/JobController.java =====
+package org.skillbridge.controller;
+
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.skillbridge.dto.request.JobCreateRequest;
+import org.skillbridge.dto.request.JobStatusUpdateRequest;
+import org.skillbridge.dto.request.JobUpdateRequest;
+import org.skillbridge.dto.response.JobResponse;
+import org.skillbridge.enums.ExperienceLevel;
+import org.skillbridge.enums.JobStatus;
+import org.skillbridge.enums.JobType;
+import org.skillbridge.service.impl.JobServiceImpl;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/jobs")
+@Tag(name = "Jobs")
+public class JobController {
+
+    private final JobServiceImpl service;
+
+    public JobController(JobServiceImpl service) { this.service = service; }
+
+    @GetMapping
+    public ResponseEntity<Page<JobResponse>> search(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) JobType jobType,
+            @RequestParam(required = false) ExperienceLevel experienceLevel,
+            @RequestParam(required = false) JobStatus status,
+            @RequestParam(required = false) BigDecimal minBudget,
+            @RequestParam(required = false) BigDecimal maxBudget,
+            @RequestParam(required = false) List<Long> skill,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.search(
+                search, location, jobType, experienceLevel, status,
+                minBudget, maxBudget, skill, pageable));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<JobResponse> get(@PathVariable Long id) {
+        return ResponseEntity.ok(service.findById(id));
+    }
+
+      @PostMapping
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<JobResponse> create(@Valid @RequestBody JobCreateRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<JobResponse> update(@PathVariable Long id,
+                                              @Valid @RequestBody JobUpdateRequest req) {
+        return ResponseEntity.ok(service.update(id, req));
+    }
+
+    @PutMapping("/{id}/status")
+    public ResponseEntity<JobResponse> changeStatus(@PathVariable Long id,
+                                                    @Valid @RequestBody JobStatusUpdateRequest req) {
+        return ResponseEntity.ok(service.changeStatus(id, req.status()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+
+===== FILE: src/main/java/org/skillbridge/entity/Job.java =====
+package org.skillbridge.entity;
+
+import jakarta.persistence.*;
+import org.skillbridge.enums.ExperienceLevel;
+import org.skillbridge.enums.JobStatus;
+import org.skillbridge.enums.JobType;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
+
+@Entity
+@Table(name = "jobs")
+public class Job {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "client_id", nullable = false)
+    private User client;
+
+    @Column(name = "title", nullable = false, length = 200)
+    private String title;
+
+    @Column(name = "description", nullable = false, length = 4000)
+    private String description;
+
+    @Column(name = "budget_min", precision = 12, scale = 2)
+    private BigDecimal budgetMin;
+
+    @Column(name = "budget_max", precision = 12, scale = 2)
+    private BigDecimal budgetMax;
+
+    @Column(name = "location", length = 150)
+    private String location;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "job_type", nullable = false, length = 30)
+    private JobType jobType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "experience_level", nullable = false, length = 30)
+    private ExperienceLevel experienceLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private JobStatus status = JobStatus.OPEN;
+
+    @Column(name = "deadline")
+    private LocalDate deadline;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "job_skills",
+            joinColumns = @JoinColumn(name = "job_id"),
+            inverseJoinColumns = @JoinColumn(name = "skill_id")
+    )
+    private Set<Skill> requiredSkills = new HashSet<>();
+
+    @PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public User getClient() { return client; }
+    public void setClient(User client) { this.client = client; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public BigDecimal getBudgetMin() { return budgetMin; }
+    public void setBudgetMin(BigDecimal budgetMin) { this.budgetMin = budgetMin; }
+
+    public BigDecimal getBudgetMax() { return budgetMax; }
+    public void setBudgetMax(BigDecimal budgetMax) { this.budgetMax = budgetMax; }
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+
+    public JobType getJobType() { return jobType; }
+    public void setJobType(JobType jobType) { this.jobType = jobType; }
+
+    public ExperienceLevel getExperienceLevel() { return experienceLevel; }
+    public void setExperienceLevel(ExperienceLevel experienceLevel) { this.experienceLevel = experienceLevel; }
+
+    public JobStatus getStatus() { return status; }
+    public void setStatus(JobStatus status) { this.status = status; }
+
+    public LocalDate getDeadline() { return deadline; }
+    public void setDeadline(LocalDate deadline) { this.deadline = deadline; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+
+    public Set<Skill> getRequiredSkills() { return requiredSkills; }
+    public void setRequiredSkills(Set<Skill> requiredSkills) { this.requiredSkills = requiredSkills; }
+}
+
+===== FILE: src/main/java/org/skillbridge/exception/GlobalExceptionHandler.java =====
+package org.skillbridge.exception;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.skillbridge.dto.response.ApiError;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.skillbridge.exception.QuotaExceededException;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError(
+                HttpStatus.NOT_FOUND.value(), "Not Found", ex.getMessage(), req.getRequestURI()));
+    }
+
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiError> handleDuplicate(DuplicateResourceException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
+                HttpStatus.CONFLICT.value(), "Conflict", ex.getMessage(), req.getRequestURI()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest req) {
+        Map<String, String> fields = new HashMap<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            fields.put(fe.getField(), fe.getDefaultMessage());
+        }
+        return ResponseEntity.badRequest().body(new ApiError(
+                HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                "Validation failed", req.getRequestURI(), fields));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiError> handleBadCredentials(BadCredentialsException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
+                HttpStatus.UNAUTHORIZED.value(), "Unauthorized",
+                "Invalid email or password", req.getRequestURI()));
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiError> handleAuth(AuthenticationException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
+                HttpStatus.UNAUTHORIZED.value(), "Unauthorized",
+                ex.getMessage(), req.getRequestURI()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(
+                HttpStatus.FORBIDDEN.value(), "Forbidden",
+                "You do not have permission to access this resource", req.getRequestURI()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegal(IllegalArgumentException ex, HttpServletRequest req) {
+        return ResponseEntity.badRequest().body(new ApiError(
+                HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), req.getRequestURI()));
+    }
+        
+           @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
+                HttpStatus.CONFLICT.value(), "Conflict", ex.getMessage(), req.getRequestURI()));
+    }
+    
+  @ExceptionHandler(NotAuthenticatedException.class)
+public ResponseEntity<ApiError> handleNotAuthenticated(NotAuthenticatedException ex, HttpServletRequest req) {
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
+            HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), req.getRequestURI()));
+}
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ApiError> handleQuota(QuotaExceededException ex, HttpServletRequest req) {
+        java.util.Map<String, String> details = new java.util.HashMap<>();
+        if (ex.getResetAtDescription() != null) {
+            details.put("resetAtDescription", ex.getResetAtDescription());
+        }
+        if (ex.getResetAt() != null) {
+            details.put("resetAt", ex.getResetAt().toString());
+        }
+        ApiError body = new ApiError(
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                "Too Many Requests",
+                ex.getMessage(),
+                req.getRequestURI(),
+                details.isEmpty() ? null : details
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
+}
+

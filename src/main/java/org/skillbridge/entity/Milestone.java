@@ -35,6 +35,26 @@ public class Milestone {
     @Column(name = "status", nullable = false, length = 30)
     private MilestoneStatus status = MilestoneStatus.PENDING;
 
+    // ----- Phase 2 (V27): revision protection -----
+    @Column(name = "revision_limit", nullable = false)
+    private Integer revisionLimit = 3;
+
+    @Column(name = "revision_count", nullable = false)
+    private Integer revisionCount = 0;
+
+    @Column(name = "submitted_at")
+    private Instant submittedAt;
+
+    @Column(name = "approved_at")
+    private Instant approvedAt;
+
+    @Column(name = "review_deadline_at")
+    private Instant reviewDeadlineAt;
+
+    @Column(name = "released_at")
+    private Instant releasedAt;
+
+    // ----- existing columns -----
     @Column(name = "completed_at")
     private Instant completedAt;
 
@@ -49,6 +69,8 @@ public class Milestone {
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
+        if (this.revisionLimit == null) this.revisionLimit = 3;
+        if (this.revisionCount == null) this.revisionCount = 0;
     }
 
     @PreUpdate
@@ -76,6 +98,24 @@ public class Milestone {
 
     public MilestoneStatus getStatus() { return status; }
     public void setStatus(MilestoneStatus status) { this.status = status; }
+
+    public Integer getRevisionLimit() { return revisionLimit; }
+    public void setRevisionLimit(Integer revisionLimit) { this.revisionLimit = revisionLimit; }
+
+    public Integer getRevisionCount() { return revisionCount; }
+    public void setRevisionCount(Integer revisionCount) { this.revisionCount = revisionCount; }
+
+    public Instant getSubmittedAt() { return submittedAt; }
+    public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }
+
+    public Instant getApprovedAt() { return approvedAt; }
+    public void setApprovedAt(Instant approvedAt) { this.approvedAt = approvedAt; }
+
+    public Instant getReviewDeadlineAt() { return reviewDeadlineAt; }
+    public void setReviewDeadlineAt(Instant reviewDeadlineAt) { this.reviewDeadlineAt = reviewDeadlineAt; }
+
+    public Instant getReleasedAt() { return releasedAt; }
+    public void setReleasedAt(Instant releasedAt) { this.releasedAt = releasedAt; }
 
     public Instant getCompletedAt() { return completedAt; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }

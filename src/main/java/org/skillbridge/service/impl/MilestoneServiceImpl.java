@@ -12,6 +12,7 @@ import org.skillbridge.enums.NotificationType;
 import org.skillbridge.exception.ResourceNotFoundException;
 import org.skillbridge.mapper.MilestoneMapper;
 import org.skillbridge.repository.ContractRepository;
+import org.skillbridge.repository.DisputeRepository;
 import org.skillbridge.repository.MilestoneRepository;
 import org.skillbridge.security.CurrentUser;
 import org.springframework.security.access.AccessDeniedException;
@@ -27,6 +28,7 @@ public class MilestoneServiceImpl {
 
     private final MilestoneRepository milestoneRepository;
     private final ContractRepository contractRepository;
+    private final DisputeRepository disputeRepository;
     private final MilestoneMapper milestoneMapper;
     private final CurrentUser currentUser;
     private final NotificationServiceImpl notificationService;
@@ -34,12 +36,14 @@ public class MilestoneServiceImpl {
 
     public MilestoneServiceImpl(MilestoneRepository milestoneRepository,
                                 ContractRepository contractRepository,
+                                DisputeRepository disputeRepository,
                                 MilestoneMapper milestoneMapper,
                                 CurrentUser currentUser,
                                 NotificationServiceImpl notificationService,
                                 CommissionServiceImpl commissionService) {
         this.milestoneRepository = milestoneRepository;
         this.contractRepository = contractRepository;
+        this.disputeRepository = disputeRepository;
         this.milestoneMapper = milestoneMapper;
         this.currentUser = currentUser;
         this.notificationService = notificationService;
@@ -107,14 +111,19 @@ public class MilestoneServiceImpl {
             throw new AccessDeniedException("Not your milestone");
         }
 
-        // IN_PROGRESS and COMPLETED are set by the freelancer;
-        // APPROVED is set by the client.
-        if (newStatus == MilestoneStatus.APPROVED && !isClient) {
-            throw new AccessDeniedException("Only the client can approve milestones");
-        }
-        if ((newStatus == MilestoneStatus.IN_PROGRESS || newStatus == MilestoneStatus.COMPLETED)
-                && !isFreelancer) {
-            throw new AccessDeniedException("Only the freelancer can progress milestones");
+        // -------- Role restrictions --------
+        switch (newStatus) {
+            case IN_PROGRESS, SUBMITTED, COMPLETED -> {
+                if (!isFreelancer) {
+                    throw new AccessDeniedException("Only the freelancer can progress milestones");
+                }
+            }
+            case APPROVED, REVISION_REQUESTED -> {
+                if (!isClient) {
+                    throw new AccessDeniedException("Only the client can approve or request revisions");
+                }
+            }
+            case PENDING -> throw new IllegalStateException("Cannot transition back to PENDING");
         }
 
         MilestoneStatus current = m.getStatus();
@@ -122,10 +131,30 @@ public class MilestoneServiceImpl {
             throw new IllegalStateException("Invalid milestone transition: " + current + " -> " + newStatus);
         }
 
-        m.setStatus(newStatus);
+        // -------- Phase 3D: dispute gate --------
+        // Block only APPROVED (money release) while an OPEN/UNDER_REVIEW/ESCALATED
+        // dispute exists on the contract. Freelancer can still SUBMIT work; client can
+        // still REVISION_REQUEST. Only the payment release is frozen.
+        if (newStatus == MilestoneStatus.APPROVED) {
+            if (disputeRepository.existsBlockingForContract(c.getId())) {
+                throw new IllegalStateException(
+                        "Cannot approve this milestone — there is an active dispute on this contract. " +
+                        "Resolve or withdraw the dispute first.");
+            }
+        }
+
+        // Phase 2: entering SUBMITTED records the timestamp. COMPLETED preserved for backward compat.
+        if (newStatus == MilestoneStatus.SUBMITTED) {
+            m.setSubmittedAt(Instant.now());
+        }
         if (newStatus == MilestoneStatus.COMPLETED) {
             m.setCompletedAt(Instant.now());
         }
+        if (newStatus == MilestoneStatus.APPROVED) {
+            m.setApprovedAt(Instant.now());
+        }
+
+        m.setStatus(newStatus);
         Milestone saved = milestoneRepository.save(m);
 
         notificationService.notify(

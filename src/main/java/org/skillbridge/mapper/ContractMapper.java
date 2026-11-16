@@ -39,6 +39,7 @@ public class ContractMapper {
                 c.getStartDate(),
                 c.getEndDate(),
                 c.getStatus(),
+                c.getDisputedAt(),
                 milestones,
                 c.getCreatedAt(),
                 c.getUpdatedAt()

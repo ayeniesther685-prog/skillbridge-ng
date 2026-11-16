@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
-import { Plus, Star } from 'lucide-react'
+import { Plus, Star, GitBranch } from 'lucide-react'
 import PageHeader from '../../components/ui/PageHeader'
 import Breadcrumbs from '../../components/ui/Breadcrumbs'
 import Card, { CardBody } from '../../components/ui/Card'
@@ -13,6 +13,9 @@ import AutoForm from '../../components/ui/AutoForm'
 import EmptyState from '../../components/ui/EmptyState'
 import QueryBoundary from '../../components/ui/QueryBoundary'
 import { contractsApi } from '../../api/contracts'
+import { contractRevisionsApi } from '../../api/contractRevisions'
+import { disputesApi } from '../../api/disputes'
+import DisputeOpenForm from '../../components/DisputeOpenForm'
 import { reviewsApi } from '../../api/reviews'
 import { useAuth } from '../../context/AuthContext'
 import { useSave } from '../../hooks/useApi'
@@ -23,14 +26,22 @@ import { num, optNum, optStr, reqStr } from '../../utils/validators'
 const msSchema = z.object({ title: reqStr('Enter a title', 200), description: optStr(), amount: optNum(), dueDate: optStr() })
 const msFields = [{ name: 'title', label: 'Title', wide: true }, { name: 'description', label: 'Description', type: 'textarea' }, { name: 'amount', label: 'Amount (₦)', type: 'number' }, { name: 'dueDate', label: 'Due date', type: 'date' }]
 const reviewSchema = z.object({ rating: num('Pick a rating from 1 to 5').pipe(z.number().min(1).max(5)), comment: optStr() })
+const revisionSchema = z.object({
+  reason: z.string().min(10, "Explain precisely what needs to change").max(2000),
+  isNewRequirements: z.boolean().optional().default(false),
+})
 
 export default function ContractDetail() {
   const { id } = useParams()
   const { user, hasRole } = useAuth()
   const [msDialog, setMsDialog] = useState(null)
   const [reviewOpen, setReviewOpen] = useState(false)
+  const [revisionDialog, setRevisionDialog] = useState(null)
+  const [disputeDialog, setDisputeDialog] = useState(null)
   const c = useQuery({ queryKey: ['contract', id], queryFn: () => contractsApi.get(id) })
   const ms = useQuery({ queryKey: ['milestones', id], queryFn: () => contractsApi.milestones(id) })
+  const revisions = useQuery({ queryKey: ['contract-revisions', id], queryFn: () => contractRevisionsApi.listForContract(id).then(r => r.data || []) })
+  const disputes = useQuery({ queryKey: ['contract-disputes', id], queryFn: () => disputesApi.listForContract(id).then(r => r.data || []) })
   const inv = [['contract', id], ['milestones', id], ['contracts']]
   const setStatus = useSave(contractsApi.setStatus, { invalidate: inv, success: 'Contract updated' })
   const addMs = useSave(contractsApi.addMilestone, { invalidate: inv, success: 'Milestone added', onSuccess: () => setMsDialog(null) })
@@ -38,7 +49,18 @@ export default function ContractDetail() {
   const msStatus = useSave(contractsApi.setMilestoneStatus, { invalidate: inv, success: 'Milestone updated' })
   const rmMs = useSave(contractsApi.removeMilestone, { invalidate: inv, success: 'Milestone removed' })
   const review = useSave(reviewsApi.create, { success: 'Review sent', onSuccess: () => setReviewOpen(false) })
+  const openDispute = useSave(
+    ({ contractId, ...body }) => disputesApi.open({ contractId, ...body }),
+    { invalidate: [['contract-disputes', id], ['contract', id]], success: 'Dispute opened', onSuccess: () => setDisputeDialog(null) }
+  )
+  const requestRevision = useSave(
+    ({ milestoneId, ...body }) => contractRevisionsApi.requestRevision(milestoneId, body),
+    { invalidate: [['contract-revisions', id], ['milestones', id]], success: 'Revision requested', onSuccess: () => setRevisionDialog(null) }
+  )
   const list = Array.isArray(ms.data) ? ms.data : ms.data?.content || []
+  const revisionList = Array.isArray(revisions.data) ? revisions.data : []
+  const disputeList = Array.isArray(disputes.data) ? disputes.data : []
+  const hasBlockingDispute = disputeList.some(d => ['OPEN','UNDER_REVIEW','ESCALATED'].includes(d.status))
 
   return (
     <QueryBoundary q={c}>{(k) => {
@@ -56,6 +78,15 @@ export default function ContractDetail() {
                 <Button size="sm" variant="outline" onClick={() => window.confirm('Cancel this contract?') && setStatus.mutate({ id, status: 'CANCELLED' })} disabled={setStatus.isPending}>Cancel</Button></>}
               {k.status === 'COMPLETED' && otherId && <Button size="sm" variant="outline" onClick={() => setReviewOpen(true)}><Star className="h-4 w-4" />Leave a review</Button>}
             </>} />
+          {hasBlockingDispute && (
+            <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm">
+              <p className="mb-1 font-medium text-rose-300">⚠ Active dispute on this contract</p>
+              <p className="text-rose-200/80">Milestones cannot be approved until the dispute is resolved.</p>
+              <Link to={`/contracts/${id}/disputes`} className="mt-2 inline-block text-indigo-400 hover:underline">
+                View disputes 2192
+              </Link>
+            </div>
+          )}
           <Card className="mb-6"><CardBody className="grid gap-3 text-sm sm:grid-cols-4">
             <div><p className="text-muted">Status</p><StatusBadge status={k.status} /></div>
             <div><p className="text-muted">Amount</p>{naira(k.totalAmount ?? k.amount)}</div>
@@ -75,12 +106,58 @@ export default function ContractDetail() {
                 <div className="flex flex-wrap items-center gap-2"><StatusBadge status={m.status} />
                   {!isClient && m.status === 'PENDING' && <Button size="sm" onClick={() => msStatus.mutate({ id: m.id, status: 'IN_PROGRESS' })} disabled={msStatus.isPending}>Start work</Button>}
                   {!isClient && m.status === 'IN_PROGRESS' && <Button size="sm" onClick={() => msStatus.mutate({ id: m.id, status: 'SUBMITTED' })} disabled={msStatus.isPending}>Submit for review</Button>}
-                  {isClient && m.status === 'SUBMITTED' && <><Button size="sm" onClick={() => msStatus.mutate({ id: m.id, status: 'APPROVED' })} disabled={msStatus.isPending}>Approve</Button>
-                    <Button size="sm" variant="outline" onClick={() => msStatus.mutate({ id: m.id, status: 'REJECTED' })} disabled={msStatus.isPending}>Request changes</Button></>}
+                  {isClient && m.status === 'SUBMITTED' && <><Button size="sm" onClick={() => msStatus.mutate({ id: m.id, status: 'APPROVED' })} disabled={msStatus.isPending || hasBlockingDispute} title={hasBlockingDispute ? "Cannot approve while a dispute is open" : ""}>Approve</Button>
+                    <Button size="sm" variant="outline" onClick={() => setRevisionDialog({ milestoneId: m.id, title: m.title })}><GitBranch className="h-4 w-4" />Request revision</Button></>}
+                  {active && (m.status === 'SUBMITTED' || m.status === 'IN_PROGRESS' || m.status === 'REVISION_REQUESTED') && (
+                    <Button size="sm" variant="ghost" onClick={() => setDisputeDialog({ milestoneId: m.id, title: m.title })}>Open dispute</Button>
+                  )}
                   {isClient && m.status === 'PENDING' && <><Button size="sm" variant="ghost" onClick={() => setMsDialog(m)}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => window.confirm('Delete this milestone?') && rmMs.mutate(m.id)}>Delete</Button></>}
                 </div>
               </CardBody></Card>))}</div>}</QueryBoundary>
+
+          <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Revisions {revisionList.length > 0 && <span className="text-sm font-normal text-muted">({revisionList.length})</span>}</h2>
+              <Link to={`/contracts/${id}/revisions`} className="text-sm text-indigo-400 hover:underline">View all →</Link>
+            </div>
+            {revisionList.length === 0
+              ? <p className="text-sm text-muted">No revisions yet.</p>
+              : <div className="space-y-2">
+                  {revisionList.slice(0, 3).map((r) => (
+                    <Card key={r.id}><CardBody className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium">{r.reason.slice(0, 100)}{r.reason.length > 100 ? '…' : ''}</p>
+                        <p className="text-xs text-muted">Milestone #{r.milestoneId} · {fmtDate(r.createdAt)}</p>
+                      </div>
+                      <StatusBadge status={r.status} />
+                    </CardBody></Card>
+                  ))}
+                  {revisionList.length > 3 && <Link to={`/contracts/${id}/revisions`} className="block text-center text-sm text-indigo-400 hover:underline">See all {revisionList.length} revisions</Link>}
+                </div>
+            }
+          </div>
+
+          <div className="mt-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Disputes {disputeList.length > 0 && <span className="text-sm font-normal text-muted">({disputeList.length})</span>}</h2>
+              <Link to={`/contracts/${id}/disputes`} className="text-sm text-indigo-400 hover:underline">View all →</Link>
+            </div>
+            {disputeList.length === 0
+              ? <p className="text-sm text-muted">No disputes yet.</p>
+              : <div className="space-y-2">
+                  {disputeList.slice(0, 3).map((d) => (
+                    <Card key={d.id}><CardBody className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium">{d.reason.slice(0, 100)}{d.reason.length > 100 ? '…' : ''}</p>
+                        <p className="text-xs text-muted">{d.status.replace(/_/g, ' ')} · {fmtDate(d.createdAt)}</p>
+                      </div>
+                      <StatusBadge status={d.status} />
+                    </CardBody></Card>
+                  ))}
+                </div>
+            }
+          </div>
 
           <Dialog open={!!msDialog} onClose={() => setMsDialog(null)} title={msDialog?.id ? 'Edit milestone' : 'Add milestone'}>
             {msDialog && <AutoForm key={msDialog.id ?? 'new'} fields={msFields} schema={msSchema} defaultValues={Object.fromEntries(msFields.map((f) => [f.name, msDialog[f.name] ?? '']))}
@@ -89,6 +166,31 @@ export default function ContractDetail() {
           <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} title="Leave a review">
             <AutoForm schema={reviewSchema} defaultValues={{ rating: '', comment: '' }} fields={[{ name: 'rating', label: 'Rating (1–5)', type: 'number' }, { name: 'comment', label: 'Comment', type: 'textarea' }]}
               onSubmit={(v) => review.mutateAsync({ jobId: k.jobId ?? k.job?.id, revieweeId: otherId, ...v })} submitLabel="Send review" onCancel={() => setReviewOpen(false)} />
+          </Dialog>
+          <Dialog open={!!revisionDialog} onClose={() => setRevisionDialog(null)} title={revisionDialog ? `Request revision: ${revisionDialog.title}` : ""}>
+            {revisionDialog && (
+              <AutoForm
+                key={revisionDialog.milestoneId}
+                schema={revisionSchema}
+                defaultValues={{ reason: "", isNewRequirements: false }}
+                fields={[
+                  { name: "reason", label: "What needs to change?", type: "textarea", wide: true },
+                  { name: "isNewRequirements", label: "This is new scope not in the original milestone", type: "checkbox" },
+                ]}
+                submitLabel="Send revision request"
+                onSubmit={(v) => requestRevision.mutateAsync({ milestoneId: revisionDialog.milestoneId, ...v })}
+                onCancel={() => setRevisionDialog(null)}
+              />
+            )}
+          </Dialog>
+          <Dialog open={!!disputeDialog} onClose={() => setDisputeDialog(null)} title={disputeDialog ? `Open dispute: ${disputeDialog.title}` : ""}>
+            {disputeDialog && (
+              <DisputeOpenForm
+                key={disputeDialog.milestoneId}
+                onSubmit={(v) => openDispute.mutateAsync({ contractId: id, milestoneId: disputeDialog.milestoneId, ...v })}
+                onCancel={() => setDisputeDialog(null)}
+              />
+            )}
           </Dialog>
         </div>)
     }}</QueryBoundary>

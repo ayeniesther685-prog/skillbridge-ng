@@ -14,6 +14,12 @@ public record MilestoneResponse(
         BigDecimal amount,
         LocalDate dueDate,
         MilestoneStatus status,
+        Integer revisionLimit,
+        Integer revisionCount,
+        Instant submittedAt,
+        Instant approvedAt,
+        Instant reviewDeadlineAt,
+        Instant releasedAt,
         Instant completedAt,
         Instant createdAt,
         Instant updatedAt

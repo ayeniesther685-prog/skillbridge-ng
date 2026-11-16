@@ -27,6 +27,7 @@ public class UserMapper {
                 user.getBio(),
                 user.getLocation(),
                 user.isActive(),
+                user.isEmailVerified(),
                 roleNames,
                 user.getCreatedAt(),
                 user.getUpdatedAt()

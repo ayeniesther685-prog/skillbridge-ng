@@ -18,10 +18,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import java.util.List;
 
@@ -42,7 +42,7 @@ public class SecurityConfig {
         this.accessDeniedHandler = accessDeniedHandler;
     }
 
-       @Bean
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -55,7 +55,11 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/register",
                                 "/api/auth/login",
-                                "/api/auth/refresh"
+                                "/api/auth/refresh",
+                                // Phase 3A: email verification endpoints
+                                "/api/auth/verify-email",
+                                "/api/auth/resend-verification",
+                                "/error"
                         ).permitAll()
 
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
@@ -78,8 +82,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/certifications").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/{userId:[0-9]+}/portfolio").permitAll()
 
-                        // PUBLIC ACADEMY CATALOG — must come BEFORE anyRequest()
-                         .requestMatchers(
+                        // Public academy catalog — must come before anyRequest()
+                        .requestMatchers(
                                 new AntPathRequestMatcher("/api/academy/programs", "GET"),
                                 new AntPathRequestMatcher("/api/academy/departments", "GET"),
                                 new AntPathRequestMatcher("/api/academy/courses", "GET"),
@@ -91,12 +95,13 @@ public class SecurityConfig {
                                 new AntPathRequestMatcher("/api/academy/assignments/*", "GET"),
                                 new AntPathRequestMatcher("/api/certificates/verify/*", "GET"),
                                 new AntPathRequestMatcher("/api/challenges", "GET"),
-                                new AntPathRequestMatcher("/api/challenges/*", "GET")
+                                new AntPathRequestMatcher("/api/challenges/*", "GET"),
+                                new AntPathRequestMatcher("/api/providers/*/verification-status", "GET")
                         ).permitAll()
+
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/me/**").authenticated()
 
-                        // LAST — must be the final rule
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

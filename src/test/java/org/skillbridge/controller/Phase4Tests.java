@@ -3,7 +3,13 @@ package org.skillbridge.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.skillbridge.dto.request.RegisterRequest;
+import org.skillbridge.entity.ProviderVerification;
+import org.skillbridge.entity.User;
+import org.skillbridge.enums.ProviderType;
 import org.skillbridge.enums.RoleName;
+import org.skillbridge.enums.VerificationStatus;
+import org.skillbridge.repository.ProviderVerificationRepository;
+import org.skillbridge.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,7 +32,32 @@ class Phase4Tests {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper om;
+    @Autowired UserRepository userRepository;
+    @Autowired ProviderVerificationRepository providerVerificationRepository;
 
+    private void markClientVerified(String email) {
+        User u = userRepository.findByEmailIgnoreCase(email).orElseThrow();
+        ProviderVerification pv = providerVerificationRepository.findByUserId(u.getId())
+                .orElseGet(() -> {
+                    ProviderVerification fresh = new ProviderVerification();
+                    fresh.setUser(u);
+                    return fresh;
+                });
+        pv.setProviderType(ProviderType.EMPLOYER);
+        pv.setLegalName("Test Client Ltd");
+        pv.setOfficialEmail(email);
+        pv.setOfficialPhone("08000000000");
+        pv.setPhysicalAddress("Test Address");
+        pv.setAuthorizedRepName("Test Rep");
+        pv.setAuthorizedRepRole("Owner");
+        pv.setStatus(VerificationStatus.VERIFIED);
+        providerVerificationRepository.save(pv);
+    }
+
+    /**
+     * Registers a CLIENT and immediately marks them VERIFIED so they can
+     * pass the job-post gate introduced in V26 / Phase 1 Part B.
+     */
     private String registerClient(String prefix) throws Exception {
         String email = prefix + "-" + UUID.randomUUID() + "@example.com";
         RegisterRequest reg = new RegisterRequest(
@@ -36,6 +67,7 @@ class Phase4Tests {
                         .content(om.writeValueAsString(reg)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
+        markClientVerified(email);
         return om.readTree(json).get("accessToken").asText();
     }
 
@@ -56,7 +88,6 @@ class Phase4Tests {
         String clientToken = registerClient("client");
         String freelancerToken = registerFreelancer("freelancer");
 
-        // 1. Client posts a job
         String jobJson = mockMvc.perform(post("/api/jobs")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -73,7 +104,6 @@ class Phase4Tests {
 
         Long jobId = om.readTree(jobJson).get("id").asLong();
 
-        // 2. Freelancer applies
         String appJson = mockMvc.perform(post("/api/jobs/" + jobId + "/applications")
                         .header("Authorization", "Bearer " + freelancerToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -88,7 +118,6 @@ class Phase4Tests {
 
         Long appId = om.readTree(appJson).get("id").asLong();
 
-        // 3. Client shortlists
         mockMvc.perform(put("/api/applications/" + appId + "/status")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -96,7 +125,6 @@ class Phase4Tests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SHORTLISTED"));
 
-        // 4. Client accepts
         mockMvc.perform(put("/api/applications/" + appId + "/status")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -104,7 +132,6 @@ class Phase4Tests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
-        // 5. Invalid transition — ACCEPTED is terminal
         mockMvc.perform(put("/api/applications/" + appId + "/status")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -135,8 +162,6 @@ class Phase4Tests {
 
         Long jobId = om.readTree(jobJson).get("id").asLong();
 
-        // CLIENTs can't apply to any job. The service layer enforces this before
-        // the "own job" check, so we get 403 (forbidden) rather than 400.
         mockMvc.perform(post("/api/jobs/" + jobId + "/applications")
                         .header("Authorization", "Bearer " + clientToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -158,6 +183,7 @@ class Phase4Tests {
                                 {"title":"Test","description":"Test",
                                  "jobType":"FREELANCE","experienceLevel":"ENTRY"}
                                 """))
+                .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         Long jobId = om.readTree(jobJson).get("id").asLong();
 

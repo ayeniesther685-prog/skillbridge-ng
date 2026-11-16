@@ -16,6 +16,12 @@ public class MilestoneMapper {
                 m.getAmount(),
                 m.getDueDate(),
                 m.getStatus(),
+                m.getRevisionLimit() != null ? m.getRevisionLimit() : 3,
+                m.getRevisionCount() != null ? m.getRevisionCount() : 0,
+                m.getSubmittedAt(),
+                m.getApprovedAt(),
+                m.getReviewDeadlineAt(),
+                m.getReleasedAt(),
                 m.getCompletedAt(),
                 m.getCreatedAt(),
                 m.getUpdatedAt()

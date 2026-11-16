@@ -11,7 +11,6 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.skillbridge.exception.QuotaExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -68,22 +67,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(new ApiError(
                 HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), req.getRequestURI()));
     }
-        
-           @ExceptionHandler(IllegalStateException.class)
+
+    @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex, HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
                 HttpStatus.CONFLICT.value(), "Conflict", ex.getMessage(), req.getRequestURI()));
     }
-    
-  @ExceptionHandler(NotAuthenticatedException.class)
-public ResponseEntity<ApiError> handleNotAuthenticated(NotAuthenticatedException ex, HttpServletRequest req) {
-    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
-            HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), req.getRequestURI()));
-}
+
+    @ExceptionHandler(NotAuthenticatedException.class)
+    public ResponseEntity<ApiError> handleNotAuthenticated(NotAuthenticatedException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError(
+                HttpStatus.UNAUTHORIZED.value(), "Unauthorized", ex.getMessage(), req.getRequestURI()));
+    }
+
+    @ExceptionHandler(ProviderNotVerifiedException.class)
+    public ResponseEntity<ApiError> handleProviderNotVerified(ProviderNotVerifiedException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(
+                HttpStatus.FORBIDDEN.value(), "Forbidden", ex.getMessage(), req.getRequestURI()));
+    }
 
     @ExceptionHandler(QuotaExceededException.class)
     public ResponseEntity<ApiError> handleQuota(QuotaExceededException ex, HttpServletRequest req) {
-        java.util.Map<String, String> details = new java.util.HashMap<>();
+        Map<String, String> details = new HashMap<>();
         if (ex.getResetAtDescription() != null) {
             details.put("resetAtDescription", ex.getResetAtDescription());
         }
@@ -98,5 +103,24 @@ public ResponseEntity<ApiError> handleNotAuthenticated(NotAuthenticatedException
                 details.isEmpty() ? null : details
         );
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body);
+    }
+
+    @ExceptionHandler(RevisionLimitExceededException.class)
+    public ResponseEntity<ApiError> handleRevisionLimit(RevisionLimitExceededException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
+                HttpStatus.CONFLICT.value(), "Revision Limit Exceeded", ex.getMessage(), req.getRequestURI()));
+    }
+
+    @ExceptionHandler(NewRequirementsException.class)
+    public ResponseEntity<ApiError> handleNewRequirements(NewRequirementsException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(
+                HttpStatus.CONFLICT.value(), "New Requirements", ex.getMessage(), req.getRequestURI()));
+    }
+
+    // Phase 3A: unverified email login attempt.
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ApiError> handleEmailNotVerified(EmailNotVerifiedException ex, HttpServletRequest req) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(
+                HttpStatus.FORBIDDEN.value(), "Email Not Verified", ex.getMessage(), req.getRequestURI()));
     }
 }

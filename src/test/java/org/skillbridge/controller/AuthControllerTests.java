@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.skillbridge.dto.request.LoginRequest;
 import org.skillbridge.dto.request.RegisterRequest;
+import org.skillbridge.entity.User;
 import org.skillbridge.enums.RoleName;
 import org.skillbridge.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,17 @@ class AuthControllerTests {
     @Autowired ObjectMapper om;
     @Autowired UserRepository userRepository;
 
+    /**
+     * Phase 3A: new registrations start email-unverified. The register->login->me flow
+     * is preserved by marking the test user verified between register and login, matching
+     * the behavior for pre-verification users who are already on the platform.
+     */
+    private void markVerified(String email) {
+        User u = userRepository.findByEmailIgnoreCase(email).orElseThrow();
+        u.setEmailVerified(true);
+        userRepository.save(u);
+    }
+
     @Test
     void register_login_andMe_flow() throws Exception {
         String email = "it-" + UUID.randomUUID() + "@example.com";
@@ -44,9 +56,13 @@ class AuthControllerTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-                .andExpect(jsonPath("$.user.email").value(email));
+                .andExpect(jsonPath("$.user.email").value(email))
+                .andExpect(jsonPath("$.user.emailVerified").value(false));
 
         assertThat(userRepository.findByEmailIgnoreCase(email)).isPresent();
+
+        // Phase 3A: mark verified so login proceeds (otherwise login returns 403)
+        markVerified(email);
 
         // Login
         LoginRequest login = new LoginRequest(email, "Password123");
@@ -55,6 +71,7 @@ class AuthControllerTests {
                         .content(om.writeValueAsString(login)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.user.emailVerified").value(true))
                 .andReturn().getResponse().getContentAsString();
 
         String accessToken = om.readTree(loginJson).get("accessToken").asText();
@@ -64,6 +81,7 @@ class AuthControllerTests {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.emailVerified").value(true))
                 .andExpect(jsonPath("$.roles[0]").value("STUDENT"));
     }
 
@@ -89,5 +107,25 @@ class AuthControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsString(bad)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void login_unverified_returns403() throws Exception {
+        // New test for Phase 3A behavior — verifies gate without marking user verified.
+        String email = "unverified-" + UUID.randomUUID() + "@example.com";
+        RegisterRequest reg = new RegisterRequest(
+                "Test", "User", email, "Password123", null, Set.of(RoleName.STUDENT));
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(reg)))
+                .andExpect(status().isCreated());
+
+        LoginRequest login = new LoginRequest(email, "Password123");
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsString(login)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("Email Not Verified"));
     }
 }

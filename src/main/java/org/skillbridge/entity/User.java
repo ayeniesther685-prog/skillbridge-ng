@@ -42,6 +42,14 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    // ----- Phase 3A: email verification -----
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    // ----- existing timestamps -----
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -56,7 +64,7 @@ public class User {
     )
     private Set<Role> roles = new HashSet<>();
 
-        @ManyToMany(fetch = FetchType.LAZY)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "user_skills",
             joinColumns = @JoinColumn(name = "user_id"),
@@ -107,17 +115,21 @@ public class User {
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
 
+    public boolean isEmailVerified() { return emailVerified; }
+    public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
+
+    public Instant getEmailVerifiedAt() { return emailVerifiedAt; }
+    public void setEmailVerifiedAt(Instant emailVerifiedAt) { this.emailVerifiedAt = emailVerifiedAt; }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
     public Set<Role> getRoles() { return roles; }
     public void setRoles(Set<Role> roles) { this.roles = roles; }
-
     public void addRole(Role role) { this.roles.add(role); }
 
-        public Set<Skill> getSkills() { return skills; }
+    public Set<Skill> getSkills() { return skills; }
     public void setSkills(Set<Skill> skills) { this.skills = skills; }
-
     public void addSkill(Skill skill) { this.skills.add(skill); }
     public void removeSkill(Skill skill) { this.skills.remove(skill); }
 }

@@ -10,6 +10,7 @@ import org.skillbridge.entity.RefreshToken;
 import org.skillbridge.entity.Role;
 import org.skillbridge.entity.User;
 import org.skillbridge.enums.RoleName;
+import org.skillbridge.exception.EmailNotVerifiedException;
 import org.skillbridge.exception.ResourceNotFoundException;
 import org.skillbridge.repository.RefreshTokenRepository;
 import org.skillbridge.repository.RoleRepository;
@@ -17,6 +18,9 @@ import org.skillbridge.repository.UserRepository;
 import org.skillbridge.security.CustomUserDetails;
 import org.skillbridge.security.JwtService;
 import org.skillbridge.service.AuthService;
+import org.skillbridge.service.EmailVerificationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -34,12 +38,15 @@ import java.util.stream.Collectors;
 @Transactional
 public class AuthServiceImpl implements AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final EmailVerificationService emailVerificationService;
 
     public AuthServiceImpl(
             UserRepository userRepository,
@@ -47,7 +54,8 @@ public class AuthServiceImpl implements AuthService {
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            JwtService jwtService
+            JwtService jwtService,
+            EmailVerificationService emailVerificationService
     ) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
@@ -55,11 +63,11 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @Override
     public AuthResponse register(RegisterRequest request) {
-
         String email = request.email().trim().toLowerCase();
 
         if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -67,58 +75,55 @@ public class AuthServiceImpl implements AuthService {
         }
 
         User user = new User();
-
         user.setFirstName(request.firstName());
         user.setLastName(request.lastName());
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(request.password()));
         user.setPhone(request.phone());
+        user.setEmailVerified(false);
 
         Set<RoleName> requestedRoles = request.roles();
-
         if (requestedRoles == null || requestedRoles.isEmpty()) {
             requestedRoles = Set.of(RoleName.STUDENT);
         }
 
-      for (RoleName roleName : requestedRoles) {
-    if (roleName == RoleName.ADMIN) {
-        throw new IllegalArgumentException("Cannot self-register as ADMIN");
-    }
-    Role role = roleRepository.findByName(roleName)
-            .orElseThrow(() ->
-                    new ResourceNotFoundException(
-                            "Role not found: " + roleName
-                    )
-            );
-    user.addRole(role);
-}
+        for (RoleName roleName : requestedRoles) {
+            if (roleName == RoleName.ADMIN) {
+                throw new IllegalArgumentException("Cannot self-register as ADMIN");
+            }
+            Role role = roleRepository.findByName(roleName)
+                    .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + roleName));
+            user.addRole(role);
+        }
 
         User savedUser = userRepository.save(user);
+
+        try {
+            emailVerificationService.issueVerification(savedUser.getId());
+        } catch (Exception e) {
+            log.error("Could not send verification email on registration for {}: {}",
+                    savedUser.getEmail(), e.getMessage());
+        }
 
         return createAuthResponse(savedUser);
     }
 
     @Override
     public AuthResponse login(LoginRequest request) {
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(request.email(), request.password()));
 
-        Authentication authentication =
-                authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(
-                                request.email(),
-                                request.password()
-                        )
-                );
-
-        CustomUserDetails userDetails =
-                (CustomUserDetails) authentication.getPrincipal();
-
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         User user = userRepository.findById(userDetails.getId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
-                );
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (!user.isActive()) {
             throw new IllegalStateException("User account is inactive");
+        }
+
+        if (!user.isEmailVerified()) {
+            throw new EmailNotVerifiedException(
+                    "Email verification required. Check your inbox, or request a new verification email.");
         }
 
         return createAuthResponse(user);
@@ -126,42 +131,33 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponse refresh(RefreshRequest request) {
-
         RefreshToken refreshToken = refreshTokenRepository
                 .findByToken(request.refreshToken())
-                .orElseThrow(() ->
-                        new IllegalArgumentException("Invalid refresh token")
-                );
+                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
         if (refreshToken.isRevoked()) {
-            throw new IllegalArgumentException(
-                    "Refresh token has been revoked"
-            );
+            throw new IllegalArgumentException("Refresh token has been revoked");
         }
-
         if (refreshToken.getExpiresAt().isBefore(Instant.now())) {
-            throw new IllegalArgumentException(
-                    "Refresh token has expired"
-            );
+            throw new IllegalArgumentException("Refresh token has expired");
         }
 
         User user = refreshToken.getUser();
-
         if (!user.isActive()) {
-            throw new IllegalStateException(
-                    "User account is inactive"
-            );
+            throw new IllegalStateException("User account is inactive");
+        }
+        if (!user.isEmailVerified()) {
+            throw new EmailNotVerifiedException(
+                    "Email verification required. Verify your email to continue.");
         }
 
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
-
         return createAuthResponse(user);
     }
 
     @Override
     public void logout(RefreshRequest request) {
-
         refreshTokenRepository
                 .findByToken(request.refreshToken())
                 .ifPresent(token -> {
@@ -173,28 +169,17 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional(readOnly = true)
     public MeResponse me() {
-
-        Authentication authentication =
-                SecurityContextHolder
-                        .getContext()
-                        .getAuthentication();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null ||
-                !(authentication.getPrincipal()
-                        instanceof CustomUserDetails userDetails)) {
-
-            throw new IllegalStateException(
-                    "User is not authenticated"
-            );
+                !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            throw new IllegalStateException("User is not authenticated");
         }
 
         User user = userRepository.findById(userDetails.getId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found")
-                );
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        Set<String> roles = user.getRoles()
-                .stream()
+        Set<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .collect(Collectors.toSet());
 
@@ -208,42 +193,27 @@ public class AuthServiceImpl implements AuthService {
                 user.getBio(),
                 user.getLocation(),
                 user.isActive(),
+                user.isEmailVerified(),
                 roles
         );
     }
 
     private AuthResponse createAuthResponse(User user) {
-
-        List<String> roles = user.getRoles()
-                .stream()
+        List<String> roles = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .toList();
 
-        String accessToken =
-                jwtService.generateAccessToken(
-                        user.getId(),
-                        user.getEmail(),
-                        roles
-                );
-
-        String refreshTokenValue =
-                jwtService.generateRefreshToken(user.getId());
+        String accessToken = jwtService.generateAccessToken(user.getId(), user.getEmail(), roles);
+        String refreshTokenValue = jwtService.generateRefreshToken(user.getId());
 
         RefreshToken refreshToken = new RefreshToken();
-
         refreshToken.setToken(refreshTokenValue);
         refreshToken.setUser(user);
         refreshToken.setRevoked(false);
-        refreshToken.setExpiresAt(
-                Instant.now().plusSeconds(
-                        jwtService.getRefreshTokenTtlSeconds()
-                )
-        );
-
+        refreshToken.setExpiresAt(Instant.now().plusSeconds(jwtService.getRefreshTokenTtlSeconds()));
         refreshTokenRepository.save(refreshToken);
 
-        Set<String> roleNames = user.getRoles()
-                .stream()
+        Set<String> roleNames = user.getRoles().stream()
                 .map(role -> role.getName().name())
                 .collect(Collectors.toSet());
 
@@ -257,6 +227,7 @@ public class AuthServiceImpl implements AuthService {
                 user.getBio(),
                 user.getLocation(),
                 user.isActive(),
+                user.isEmailVerified(),
                 roleNames,
                 user.getCreatedAt(),
                 user.getUpdatedAt()

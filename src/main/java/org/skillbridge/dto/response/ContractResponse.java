@@ -21,6 +21,7 @@ public record ContractResponse(
         LocalDate startDate,
         LocalDate endDate,
         ContractStatus status,
+        Instant disputedAt,
         List<MilestoneResponse> milestones,
         Instant createdAt,
         Instant updatedAt

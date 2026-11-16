@@ -1,0 +1,547 @@
+===== Milestone.java =====
+package org.skillbridge.entity;
+
+import jakarta.persistence.*;
+import org.skillbridge.enums.MilestoneStatus;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "milestones")
+public class Milestone {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "contract_id", nullable = false)
+    private Contract contract;
+
+    @Column(name = "title", nullable = false, length = 200)
+    private String title;
+
+    @Column(name = "description", length = 2000)
+    private String description;
+
+    @Column(name = "amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal amount;
+
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private MilestoneStatus status = MilestoneStatus.PENDING;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Contract getContract() { return contract; }
+    public void setContract(Contract contract) { this.contract = contract; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+    public LocalDate getDueDate() { return dueDate; }
+    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+
+    public MilestoneStatus getStatus() { return status; }
+    public void setStatus(MilestoneStatus status) { this.status = status; }
+
+    public Instant getCompletedAt() { return completedAt; }
+    public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+}
+===== MilestoneStatus.java =====
+package org.skillbridge.enums;
+
+import java.util.Set;
+
+public enum MilestoneStatus {
+    PENDING,
+    IN_PROGRESS,
+    COMPLETED,
+    APPROVED;
+
+    public Set<MilestoneStatus> allowedNext() {
+        return switch (this) {
+            case PENDING     -> Set.of(IN_PROGRESS);
+            case IN_PROGRESS -> Set.of(COMPLETED);
+            case COMPLETED   -> Set.of(APPROVED);
+            case APPROVED    -> Set.of();
+        };
+    }
+
+    public boolean isTerminal() {
+        return allowedNext().isEmpty();
+    }
+}
+===== MilestoneRepository.java =====
+package org.skillbridge.repository;
+
+import org.skillbridge.entity.Milestone;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface MilestoneRepository extends JpaRepository<Milestone, Long> {
+
+    List<Milestone> findByContractIdOrderByCreatedAtAsc(Long contractId);
+
+    long countByContractId(Long contractId);
+}
+===== MilestoneCreateRequest.java =====
+package org.skillbridge.dto.request;
+
+import jakarta.validation.constraints.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public record MilestoneCreateRequest(
+        @NotBlank @Size(max = 200) String title,
+        @Size(max = 2000) String description,
+        @NotNull @DecimalMin(value = "0.0", inclusive = false) BigDecimal amount,
+        LocalDate dueDate
+) {}
+===== MilestoneUpdateRequest.java =====
+package org.skillbridge.dto.request;
+
+import jakarta.validation.constraints.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public record MilestoneUpdateRequest(
+        @NotBlank @Size(max = 200) String title,
+        @Size(max = 2000) String description,
+        @NotNull @DecimalMin(value = "0.0", inclusive = false) BigDecimal amount,
+        LocalDate dueDate
+) {}
+===== MilestoneResponse.java =====
+package org.skillbridge.dto.response;
+
+import org.skillbridge.enums.MilestoneStatus;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
+public record MilestoneResponse(
+        Long id,
+        Long contractId,
+        String title,
+        String description,
+        BigDecimal amount,
+        LocalDate dueDate,
+        MilestoneStatus status,
+        Instant completedAt,
+        Instant createdAt,
+        Instant updatedAt
+) {}
+===== MilestoneMapper.java =====
+package org.skillbridge.mapper;
+
+import org.skillbridge.dto.response.MilestoneResponse;
+import org.skillbridge.entity.Milestone;
+import org.springframework.stereotype.Component;
+
+@Component
+public class MilestoneMapper {
+
+    public MilestoneResponse toResponse(Milestone m) {
+        return new MilestoneResponse(
+                m.getId(),
+                m.getContract().getId(),
+                m.getTitle(),
+                m.getDescription(),
+                m.getAmount(),
+                m.getDueDate(),
+                m.getStatus(),
+                m.getCompletedAt(),
+                m.getCreatedAt(),
+                m.getUpdatedAt()
+        );
+    }
+}
+===== ContractResponse.java =====
+package org.skillbridge.dto.response;
+
+import org.skillbridge.enums.ContractStatus;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+
+public record ContractResponse(
+        Long id,
+        Long jobId,
+        String jobTitle,
+        Long clientId,
+        String clientName,
+        Long freelancerId,
+        String freelancerName,
+        String title,
+        String description,
+        BigDecimal amount,
+        LocalDate startDate,
+        LocalDate endDate,
+        ContractStatus status,
+        List<MilestoneResponse> milestones,
+        Instant createdAt,
+        Instant updatedAt
+) {}
+===== ContractServiceImpl.java =====
+package org.skillbridge.service.impl;
+
+import org.skillbridge.dto.request.ContractCreateRequest;
+import org.skillbridge.dto.response.ContractResponse;
+import org.skillbridge.entity.Application;
+import org.skillbridge.entity.Contract;
+import org.skillbridge.entity.Job;
+import org.skillbridge.entity.User;
+import org.skillbridge.enums.ApplicationStatus;
+import org.skillbridge.enums.ContractStatus;
+import org.skillbridge.enums.JobStatus;
+import org.skillbridge.enums.NotificationType;
+import org.skillbridge.exception.DuplicateResourceException;
+import org.skillbridge.exception.ResourceNotFoundException;
+import org.skillbridge.mapper.ContractMapper;
+import org.skillbridge.repository.ApplicationRepository;
+import org.skillbridge.repository.ContractRepository;
+import org.skillbridge.repository.JobRepository;
+import org.skillbridge.security.CurrentUser;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+
+@Service
+@Transactional(readOnly = true)
+public class ContractServiceImpl {
+
+    private final ContractRepository contractRepository;
+    private final ApplicationRepository applicationRepository;
+    private final JobRepository jobRepository;
+    private final ContractMapper contractMapper;
+    private final CurrentUser currentUser;
+    private final NotificationServiceImpl notificationService;
+
+    public ContractServiceImpl(ContractRepository contractRepository,
+                               ApplicationRepository applicationRepository,
+                               JobRepository jobRepository,
+                               ContractMapper contractMapper,
+                               CurrentUser currentUser,
+                               NotificationServiceImpl notificationService) {
+        this.contractRepository = contractRepository;
+        this.applicationRepository = applicationRepository;
+        this.jobRepository = jobRepository;
+        this.contractMapper = contractMapper;
+        this.currentUser = currentUser;
+        this.notificationService = notificationService;
+    }
+
+    @Transactional
+    public ContractResponse createFromApplication(ContractCreateRequest req) {
+        User caller = currentUser.require();
+        Application application = applicationRepository.findById(req.applicationId())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+
+        Job job = application.getJob();
+        if (!job.getClient().getId().equals(caller.getId())) {
+            throw new AccessDeniedException("Only the job owner can create a contract");
+        }
+        if (application.getStatus() != ApplicationStatus.ACCEPTED) {
+            throw new IllegalStateException("Application must be ACCEPTED to create a contract");
+        }
+        if (contractRepository.existsByJobId(job.getId())) {
+            throw new DuplicateResourceException("A contract already exists for this job");
+        }
+
+        BigDecimal amount = application.getProposal() != null
+                ? application.getProposal().getProposedPrice()
+                : (job.getBudgetMax() != null ? job.getBudgetMax() : BigDecimal.ZERO);
+
+        Contract contract = new Contract();
+        contract.setJob(job);
+        contract.setClient(job.getClient());
+        contract.setFreelancer(application.getApplicant());
+        contract.setTitle(job.getTitle());
+        contract.setDescription(job.getDescription());
+        contract.setAmount(amount);
+        contract.setStatus(ContractStatus.ACTIVE);
+
+        Contract saved = contractRepository.save(contract);
+
+        // Flip the job to IN_PROGRESS
+        job.setStatus(JobStatus.IN_PROGRESS);
+        jobRepository.save(job);
+
+        // Notify freelancer
+        notificationService.notify(
+                saved.getFreelancer(),
+                NotificationType.CONTRACT,
+                "New contract created",
+                "A contract was created for job: " + job.getTitle()
+        );
+
+        return contractMapper.toResponse(saved);
+    }
+
+    public Page<ContractResponse> listMine(Pageable pageable) {
+        User me = currentUser.require();
+        // Show contracts where I am either client or freelancer.
+        // We use client page since ordering by createdAt is consistent on both.
+        // Merge would need a union query; for now, show client-side first.
+        Page<Contract> asClient = contractRepository.findByClientId(me.getId(), pageable);
+        if (asClient.hasContent()) {
+            return asClient.map(contractMapper::toResponse);
+        }
+        return contractRepository.findByFreelancerId(me.getId(), pageable)
+                .map(contractMapper::toResponse);
+    }
+
+    public ContractResponse findById(Long id) {
+        User me = currentUser.require();
+        Contract c = contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id " + id));
+        boolean isClient = c.getClient().getId().equals(me.getId());
+        boolean isFreelancer = c.getFreelancer().getId().equals(me.getId());
+        if (!isClient && !isFreelancer) {
+            throw new AccessDeniedException("Not your contract");
+        }
+        return contractMapper.toResponse(c);
+    }
+
+    @Transactional
+    public ContractResponse changeStatus(Long id, ContractStatus newStatus) {
+        User me = currentUser.require();
+        Contract c = contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id " + id));
+
+        boolean isClient = c.getClient().getId().equals(me.getId());
+        boolean isFreelancer = c.getFreelancer().getId().equals(me.getId());
+        if (!isClient && !isFreelancer) {
+            throw new AccessDeniedException("Not your contract");
+        }
+
+        // Simple transition rules
+        ContractStatus current = c.getStatus();
+        if (current == ContractStatus.COMPLETED || current == ContractStatus.CANCELLED) {
+            throw new IllegalStateException("Contract is in terminal status " + current);
+        }
+        if (newStatus == ContractStatus.CANCELLED && !isClient) {
+            throw new AccessDeniedException("Only the client can cancel a contract");
+        }
+
+        c.setStatus(newStatus);
+        Contract saved = contractRepository.save(c);
+
+        notificationService.notify(
+                isClient ? c.getFreelancer() : c.getClient(),
+                NotificationType.CONTRACT,
+                "Contract status changed",
+                "Contract for '" + c.getTitle() + "' is now " + newStatus
+        );
+
+        return contractMapper.toResponse(saved);
+    }
+}
+===== ContractController.java =====
+package org.skillbridge.controller;
+
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.skillbridge.dto.request.ContractCreateRequest;
+import org.skillbridge.dto.request.ContractStatusUpdateRequest;
+import org.skillbridge.dto.response.ContractResponse;
+import org.skillbridge.service.impl.ContractServiceImpl;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/contracts")
+@Tag(name = "Contracts")
+public class ContractController {
+
+    private final ContractServiceImpl service;
+
+    public ContractController(ContractServiceImpl service) { this.service = service; }
+
+    @PostMapping
+    public ResponseEntity<ContractResponse> create(@Valid @RequestBody ContractCreateRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.createFromApplication(req));
+    }
+
+    @GetMapping
+    public ResponseEntity<Page<ContractResponse>> mine(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(service.listMine(pageable));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ContractResponse> get(@PathVariable Long id) {
+        return ResponseEntity.ok(service.findById(id));
+    }
+
+    @PutMapping("/{id}/status")
+    public ResponseEntity<ContractResponse> changeStatus(@PathVariable Long id,
+                                                         @Valid @RequestBody ContractStatusUpdateRequest req) {
+        return ResponseEntity.ok(service.changeStatus(id, req.status()));
+    }
+}
+===== Contract.java =====
+package org.skillbridge.entity;
+
+import jakarta.persistence.*;
+import org.skillbridge.enums.ContractStatus;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "contracts")
+public class Contract {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "job_id", nullable = false, unique = true)
+    private Job job;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "client_id", nullable = false)
+    private User client;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "freelancer_id", nullable = false)
+    private User freelancer;
+
+    @Column(name = "title", nullable = false, length = 200)
+    private String title;
+
+    @Column(name = "description", length = 4000)
+    private String description;
+
+    @Column(name = "amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal amount;
+
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private ContractStatus status = ContractStatus.DRAFT;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @OneToMany(mappedBy = "contract", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderBy("createdAt ASC")
+    private List<Milestone> milestones = new ArrayList<>();
+
+    @PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public Job getJob() { return job; }
+    public void setJob(Job job) { this.job = job; }
+
+    public User getClient() { return client; }
+    public void setClient(User client) { this.client = client; }
+
+    public User getFreelancer() { return freelancer; }
+    public void setFreelancer(User freelancer) { this.freelancer = freelancer; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+
+    public ContractStatus getStatus() { return status; }
+    public void setStatus(ContractStatus status) { this.status = status; }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
+
+    public List<Milestone> getMilestones() { return milestones; }
+    public void setMilestones(List<Milestone> milestones) { this.milestones = milestones; }
+
+    public void addMilestone(Milestone m) {
+        milestones.add(m);
+        m.setContract(this);
+    }
+}

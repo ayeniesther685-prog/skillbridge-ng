@@ -12,5 +12,6 @@ public record MeResponse(
         String bio,
         String location,
         boolean active,
+        boolean emailVerified,
         Set<String> roles
 ) {}

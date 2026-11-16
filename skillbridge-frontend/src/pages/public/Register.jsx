@@ -1,14 +1,16 @@
+import { useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import AuthShell from './AuthShell'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import { registerSchema } from '../../utils/validators'
-import { useAuth, dashboardFor, primaryRole } from '../../context/AuthContext'
+import { useAuth } from '../../context/AuthContext'
 import { normalizeError } from '../../api/errors'
 import { useToast } from '../../context/ToastContext'
 import Spinner from '../../components/ui/Spinner'
+import { authApi } from '../../api/auth'
 
 const ROLES = [
   ['STUDENT', 'Student', 'Learn in the Academy'],
@@ -18,19 +20,54 @@ const ROLES = [
 
 export default function Register() {
   const { register: signUp, user, restoring } = useAuth()
-  const nav = useNavigate()
   const toast = useToast()
   const { register, control, handleSubmit, setError, formState: { errors, isSubmitting } } =
     useForm({ resolver: zodResolver(registerSchema), defaultValues: { roles: ['STUDENT'] } })
+  const [successEmail, setSuccessEmail] = useState(null)
+  const [resending, setResending] = useState(false)
 
   if (restoring) return <Spinner full />
-  if (user) return <Navigate to={dashboardFor(primaryRole(user.roles))} replace />
+  if (user) return <Navigate to="/dashboard" replace />
+  if (successEmail) {
+    return (
+      <AuthShell title="Check your email" subtitle="One more step to activate your account." footer={<>Wrong email? <Link to="/register" className="text-accent hover:underline">Start over</Link></>}>
+        <div className="space-y-4 text-sm">
+          <p className="text-slate-300">
+            We've sent a verification link to <strong>{successEmail}</strong>.
+          </p>
+          <p className="text-muted">
+            Click the link in the email to activate your account. If you don't see it within a few minutes, check your spam folder.
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              setResending(true)
+              try {
+                await authApi.resendVerification(successEmail)
+                toast.success('Verification email resent.')
+              } catch {
+                toast.error('Could not resend. Try again in a moment.')
+              } finally {
+                setResending(false)
+              }
+            }}
+            disabled={resending}
+            className="text-indigo-400 hover:underline disabled:opacity-50"
+          >
+            {resending ? 'Sending…' : 'Resend verification email'}
+          </button>
+        </div>
+      </AuthShell>
+    )
+  }
 
   const onSubmit = async (v) => {
     const body = { ...v, phone: v.phone?.trim() || undefined }
     try {
       const u = await signUp(body)
-      nav(dashboardFor(primaryRole(u.roles)), { replace: true })
+      // Phase 3A: unverified users cannot log in. Show "check your email" instead of
+      // redirecting to dashboard. Backend already sent the verification email.
+      setSuccessEmail(u.user?.email || v.email)
     } catch (err) {
       const e = normalizeError(err)
       if (e.fieldErrors) Object.entries(e.fieldErrors).forEach(([k, m]) => setError(k, { message: m }))
