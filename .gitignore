@@ -38,3 +38,10 @@ project-tree.txt
 *-dump.txt
 skillbridge-full-dump.txt
 phase1-inputs.txt*.bak*
+
+# Local backups and scratch files
+*.bak
+*.bak-*
+*.pre-button-fix
+*.broken
+phase*-inputs.txt
